@@ -1,0 +1,116 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Getting started — Konami&#x27;s Baseball (Konami, 1984)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,642px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html" style=color:var(--tinta)>Start</a><a href="THE-GAME.html">The game</a><a href="THE-CARTRIDGE.html">The cartridge</a><a href="THE-CODE.html">The code</a><a href="FINDINGS.html">Findings</a><a href="IN-THE-EMULATOR.html">In the emulator</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/EMPEZAR.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="getting-started">Getting started</h1>
+<p>This repository holds a commented disassembly of <b>Konami&#x27;s Baseball</b> (Konami, 1984), the 16 KB <b>RC-724</b> cartridge for the MSX1.</p>
+<p>The ROM is <b>not distributed here</b>. You need to put it in the root of the repository under the name <code>baseball.rom</code>. To check it is the same one:</p>
+<pre><code>shasum -a 256 baseball.rom
+06504efb72d1cd3351dae8eb1f7b073f69d599fa7018663937f85535658ad3e7</code></pre>
+<h2 id="what-make-does">What <code>make</code> does</h2>
+<pre><code>make listado    builds src/baseball.asm from the trace and the notes
+make verify     reassembles the listing and compares it with the ROM, byte by byte
+make sanity     the four checks reassembling does NOT cover
+make densidad   counts how much of the listing is commented
+make imagenes   draws the declared graphic blocks, so you can look at them
+make web        builds the bilingual site under docs/</code></pre>
+<p>Plain <code>make</code> runs <code>listado</code>, <code>verify</code>, <code>sanity</code> and <code>test</code>.</p>
+<h2 id="why-verify-is-the-test-that-matters">Why <code>verify</code> is the test that matters</h2>
+<p>A disassembly can be written many ways, and nearly all of them are wrong in some way you will not notice. The one test that admits no argument is to reassemble the listing and check that it produces <b>exactly the same ROM</b>: all 16,384 bytes, in the same order, with the same sha256.</p>
+<p>That is what <code>make verify</code> does, and it has been run after every working round. If it ever fails, the listing is wrong, however nicely it reads.</p>
+<h2 id="what-reassembling-does-not-cover">What reassembling does NOT cover</h2>
+<p>The bytes coming out identical says nothing about whether we have <b>understood</b> them. A data block read as if it were code produces the same binary and a lie in the listing. This cartridge has a perfect example: the addresses written <b>behind</b> each <code>call 0x4582</code>. The disassembler took them for instructions, the binary came out identical, and the listing lied in nine places.</p>
+<p>That is why <code>make sanity</code> runs four separate checks:</p>
+<ul><li><b><code>check_trace.py</code></b>: nothing declared as data in the <code>.nocode</code> may have been traced as code.</li><li><b><code>check_datos_como_codigo.py</code></b>: no data block from the <code>.notes</code> may overlap traced code.</li><li><b><code>check_entradas.py</code></b>: no hand-declared entry point may land inside a data block, and <b>every one of them must carry its reason alongside</b>.</li><li><b><code>presupuesto.py</code></b>: all 16,384 bytes must be accounted for. Right now: 9,618 of code, 6,766 of data, <b>zero unexplained</b>.</li></ul>
+<h2 id="and-the-tests">And the tests</h2>
+<p><code>make test</code> runs twelve more checks on the listing itself: that comments do not disappear, that no routine drops below 10 % density, that the numbers published on this site are the ones in the tree and not the ones that were true when the text was written, and that no other game from the series sneaks into a page - which has happened before, with five LICENSE files and with the footer of fourteen pages.</p>
+<h2 id="the-files">The files</h2>
+<pre><code>baseball.rom          the ROM (NOT here)
+src/baseball.entries  the entry points, each with its justification
+src/baseball.notes    EVERYTHING understood: names, comments, data blocks
+src/baseball.nocode   ranges declared as data before tracing (empty here)
+src/baseball.asm      the listing, GENERATED; never edited by hand
+tools/                the disassembler, the checkers and the site</code></pre>
+<p>The file that matters is <b><code>src/baseball.notes</code></b>. The <code>.asm</code> is regenerated whole every time; what is written by hand are the notes, and they are anchored to addresses, so they survive a re-trace.</p>
+<footer><p><em>Konami's Baseball</em> was published by Konami for the MSX; its catalogue number is RC-724 and it is 16 KB. All rights in the game remain with their holders. This is preservation, study and documentation work, and the cartridge image is not distributed.</p></footer></div>

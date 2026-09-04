@@ -1,0 +1,127 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>El cartucho — Konami&#x27;s Baseball (Konami, 1984)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,642px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-JUEGO.html">El juego</a><a href="EL-CARTUCHO.html" style=color:var(--tinta)>El cartucho</a><a href="EL-CODIGO.html">El código</a><a href="HALLAZGOS.html">Hallazgos</a><a href="EN-EL-EMULADOR.html">En el emulador</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../THE-CARTRIDGE.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
+<h1 id="el-cartucho">El cartucho</h1>
+<p>16.384 bytes en la página 1, de 0x4000 a 0x7FFF. Todos asignados:</p>
+<pre><code>código trazado      9.618 bytes    58,70 %
+datos declarados    6.766 bytes    41,30 %
+sin explicar                0 bytes     0,00 %</code></pre>
+<h2 id="la-cabecera">La cabecera</h2>
+<p>Los diez primeros bytes son <code>41 42 61 40 00 00 00 00 00 00</code>: la marca <b>AB</b> y la dirección de <b>INIT</b>, 0x4061. STATEMENT, DEVICE y TEXT a cero, y seis bytes de relleno hasta el manejador de interrupción de 0x4010.</p>
+<h2 id="el-arranque">El arranque</h2>
+<p>INIT no usa la BIOS para enganchar la interrupción: pone un <code>0xC3</code> -un <code>jp</code>- en <b>H.KEYI</b> (0xFD9A) y la dirección 0x4010 detrás, borra 0xE000-0xE7FE con un <code>ldir</code> y deja la pila ahí. <b>Todo el juego corre dentro de la interrupción.</b></p>
+<p>Es el mismo patrón que King&#x27;s Valley, y no es la única coincidencia.</p>
+<h2 id="el-mismo-armazon-que-king-s-valley">El mismo armazón que King&#x27;s Valley</h2>
+<p>Este cartucho es de 1984 y King&#x27;s Valley de 1985, y comparten cosas que no son casualidad:</p>
+<p><b>La tabla de registros del VDP es idéntica salvo un byte:</b></p>
+<pre><code>Baseball        02 E2 0E 7F 07 76 03 E1   (0x46cc)
+King&#x27;s Valley   02 E2 0E 7F 07 76 03 E4   (0x45c0)</code></pre>
+<p>Sólo cambia R7, el color de borde. O sea, la <b>misma geometría de VRAM</b>, incluida la rareza que se explica en la página de hallazgos: colores en 0x0000 y patrones en 0x2000, al revés de lo habitual.</p>
+<p><b>El mismo lenguaje de guiones</b>, con dos diferencias reales:</p>
+<ul><li>Baseball tiene un comando <b>de más</b>, el <code>0x01</code>: el nibble bajo del byte siguiente dice cuántos bytes ocupa un tramo y el alto cuántas veces se repite. King&#x27;s Valley no lo tiene.</li><li>Al encadenar (<code>0x80</code>), Baseball lee la dirección con el byte <b>alto primero</b> (<code>ld d,(hl)</code> antes que <code>ld e,(hl)</code>, en 0x4589); King&#x27;s Valley con el bajo primero. Leer uno con el orden del otro da ruido.</li></ul>
+<p>Que el cartucho <b>viejo</b> tenga el comando de más y el nuevo no, encaja con que King&#x27;s Valley sea una simplificación, no al revés. <b>SUPOSICIÓN</b>: no se ha comprobado con más cartuchos de la familia.</p>
+<p><b>Diferencia propia de Baseball</b>: la interrupción lleva <b>dos candados</b> (0xE01E y 0xE01F), y <code>arma_escritura_vram</code> (0x4689) <b>repite la operación entera</b> si la interrupción se cuela entre medias -mira 0xE01D-. King&#x27;s Valley no necesita eso. Es el mecanismo que le deja escribir VRAM con la interrupción suelta.</p>
+<h2 id="la-geometria-de-la-vram">La geometría de la VRAM</h2>
+<pre><code>COLOR     0x0000    (R3 = 0x7F)
+PATRÓN    0x2000    (R4 = 0x07)
+NOMBRE    0x3800    (R2 = 0x0E)
+SPRITES   0x1800    (R6 = 0x03), atributos en 0x3B00 (R5 = 0x76)</code></pre>
+<p>En SCREEN 2 el TMS9918 no lee R3 y R4 como una dirección, sino como un bit de base y una máscara. Leerlo del otro modo tiene un síntoma que engaña: las formas se siguen reconociendo -los dos bloques son simétricos- pero los colores salen a franjas.</p>
+<h2 id="el-interprete-de-guiones">El interprete de guiones</h2>
+<p>Todo lo que el cartucho dibuja está guardado como <b>guiones</b>: tiras de órdenes que 0x458d va ejecutando contra el puerto de datos del VDP.</p>
+<pre><code>0x01 nb       n = nibble alto, b = nibble bajo. Copia n veces el mismo tramo
+              de b bytes, sin gastarlo, y al final salta esos b bytes
+0x00          fin del guion
+0x80          encadena: los dos bytes siguientes son una dirección de VRAM
+              nueva, BYTE ALTO PRIMERO
+n (bit 7 a 0) relleno: el byte siguiente, repetido n veces
+n (bit 7 a 1) copia cruda de (n and 0x7F) bytes</code></pre>
+<p><code>tools/guiones.py</code> reproduce este intérprete en Python, y es de donde salen todas las imágenes de esta web.</p>
+<h2 id="los-bloques-de-datos">Los bloques de datos</h2>
+<p>Están todos separados por uso, cada uno con su nombre y su anchura declarada. Los grandes:</p>
+<table><tr><th>Dónde</th><th>Qué</th></tr><tr><td>0x46d4-0x4765</td><td>los guiones de la pantalla de título y de la elección</td></tr><tr><td>0x4765-0x477f</td><td>las tablas del cursor del menú</td></tr><tr><td>0x477f-0x47c9</td><td>los tres guiones del marcador</td></tr><tr><td>0x47cf-0x4af0</td><td>el guion largo del arranque y sus reentradas</td></tr><tr><td>0x4af0-0x4b53</td><td><b>un guion que no dibuja nadie</b></td></tr><tr><td>0x5048-0x5a32</td><td>las posturas de los jugadores, tres capas cada una</td></tr><tr><td>0x5bd9-0x5c03</td><td>los dos registros de arranque, 21 bytes cada uno</td></tr><tr><td>0x5c03-0x5d3b</td><td>las quince fichas de los jugadores de campo</td></tr><tr><td>0x65ad-0x6c0e</td><td>los guiones del estadio</td></tr><tr><td>0x6e84-0x7080</td><td>las notas, los punteros de sonido y sus guiones</td></tr><tr><td>0x7c20-0x7c7a</td><td>los siete carteles y sus textos</td></tr><tr><td>0x7ff6-0x8000</td><td>la marca oculta de Konami</td></tr></table>
+<h2 id="la-marca-oculta">La marca oculta</h2>
+<p>En 0x7FF6, cerrando el cartucho: <b>RC-724</b> y el título en katakana, <b>YA KI U</b>, que es 野球 (<em>yakyū</em>), béisbol. Konami escondía esto al final de muchos de sus cartuchos; lo descubrió <b>Manuel Pazos</b> (<a href="https://twitter.com/ManuelPazosMSX">@ManuelPazosMSX</a>).</p>
+<footer><p><em>Konami's Baseball</em> lo publico Konami para MSX; su numero de catalogo es RC-724 y son 16 KB. Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservacion, estudio y documentacion, y la imagen del cartucho no se distribuye.</p></footer></div>

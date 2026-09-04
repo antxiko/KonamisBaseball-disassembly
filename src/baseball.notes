@@ -1,0 +1,3954 @@
+# Notas de Konami's Baseball (Konami, RC-724, 1984). ROM de 16 KB en 0x4000.
+#
+# ======================================================================
+# LO PRIMERO QUE HAY QUE SABER: ES EL MISMO ARMAZON QUE KING'S VALLEY
+# ======================================================================
+#
+# Este cartucho es de 1984 y King's Valley de 1985, y comparten cosas que no
+# son coincidencia:
+#
+# 1) LA MISMA TABLA DE REGISTROS DEL VDP, byte a byte salvo uno:
+#
+#        Baseball        02 E2 0E 7F 07 76 03 E1   (0x46cc)
+#        King's Valley   02 E2 0E 7F 07 76 03 E4   (0x45c0)
+#
+#    Solo cambia R7, el color de borde y fondo. O sea, la MISMA geometria de
+#    VRAM, incluida la rareza: R3=0x7F y R4=0x07 en SCREEN 2 no son
+#    direcciones sino base mas mascara, y lo que dicen es
+#
+#        COLOR   en 0x0000      PATRON  en 0x2000
+#        NOMBRE  en 0x3800      SPRITES en 0x1800, atributos en 0x3B00
+#
+#    que es al reves de la disposicion tipica. Ver la web de King's Valley.
+#
+# 2) EL MISMO LENGUAJE DE GUIONES, con una extension. El interprete de aqui
+#    (L_4591, 0x4591) y el de King's Valley (0x451a) tienen el mismo cuerpo:
+#
+#        C = B0 & 0x7F
+#          C != 0 y bit 7 puesto -> copia cruda de C bytes
+#          C != 0 y bit 7 a cero -> relleno: un byte repetido C veces
+#          B0 == 0x00            -> fin
+#          B0 == 0x80            -> encadena leyendo otra direccion VRAM
+#
+#    Con DOS diferencias reales, no de estilo:
+#
+#    - Baseball tiene un comando MAS, el 0x01: lee un byte cuyo nibble bajo
+#      es B y cuyo nibble alto es C, y repite C veces la copia de un tramo,
+#      saltando B bytes al final (0x4597-0x45b1). King's Valley no lo tiene.
+#    - Al encadenar, Baseball lee la direccion con el byte ALTO primero
+#      (`ld d,(hl) / inc hl / ld e,(hl)` en 0x4589), y King's Valley con el
+#      bajo primero. Leer uno con el orden del otro da ruido.
+#
+#    Que el cartucho VIEJO tenga el comando de mas y el nuevo no encaja con
+#    que King's Valley sea una simplificacion, no al reves. SUPOSICION: no
+#    se ha comprobado con mas cartuchos de la familia.
+#
+# 3) EL MISMO ARRANQUE: INIT engancha la interrupcion a mano poniendo un 0xC3
+#    en H.KEYI (0xFD9A) y la direccion detras, borra la RAM de trabajo con un
+#    ldir y deja la pila ahi. Todo el juego corre dentro de la interrupcion.
+#
+# ======================================================================
+
+# --- la cabecera del cartucho ---
+# 41 42 61 40 00 00 00 00 00 00: la marca AB y la direccion de INIT (0x4061).
+# El resto -STATEMENT, DEVICE, TEXT- a cero, y seis bytes de relleno hasta el
+# manejador de interrupcion de 0x4010.
+D 0x4000 0x4010 cabecera_del_cartucho  AB y la direccion de INIT; el resto a cero
+F 0x4000 w
+
+# --- los registros del VDP ---
+# 0x40b7 hace `ld hl,046cch / ld d,008h / ld c,000h` y luego un bucle que
+# llama a WRTVDP con B=(HL) y C como numero de registro, subiendo los dos:
+# son los ocho valores de R0 a R7 en orden. La cuenta de 8 y el indice que
+# arranca en 0 no dejan otra lectura.
+D 0x46cc 0x46d4 tabla_registros_vdp  Los 8 valores crudos de R0 a R7 que carga 0x40b7; identicos a los de King's Valley salvo R7
+F 0x46cc 8
+
+# --- los guiones de graficos del arranque ---
+# Los carga el arranque uno tras otro con el par `ld de,<VRAM> / ld hl,<guion>
+# / call L_4689 / call L_4591`: L_4689 arma la escritura de VRAM en DE y
+# L_4591 es el interprete. Las direcciones VRAM que usa (0x6680, 0x6780,
+# 0x6800, 0x5800...) van enmascaradas a 14 bits por SETWRT.
+# (partido por uso mas abajo, en la seccion de los guiones del arranque)
+
+# --- tablas leidas con indice ---
+D 0x4396 0x43a6 tabla_de_flechas  Traduce las cuatro flechas de la fila 8 del teclado al orden en que las quiere el resto del cartucho, que es el del joystick. El indice que entra lleva bit 3 derecha, bit 2 abajo, bit 1 arriba y bit 0 izquierda -asi las da la matriz-; lo que sale lleva bit 0 arriba, bit 1 abajo, bit 2 izquierda y bit 3 derecha. Las seis combinaciones imposibles -arriba y abajo a la vez, izquierda y derecha a la vez- valen 0x0F
+F 0x4396 1
+
+D 0x4457 0x4461 tabla_4457  Dos tramos de bytes, leidos desde 0x443d y 0x4443
+F 0x4457 5
+
+D 0x4649 0x4655 iniciales_de_los_equipos  LAS DOCE INICIALES, seis por liga, en el orden en que salen en la parrilla. Son numeros de tile, y dibujando la fuente desde la ROM se leen: el primer tramo es la Central -C, D, G, S, T, W: Carp, Dragons, Giants, Swallows, Tigers, Whales- y el segundo la Pacific -B, Bu, F, H, L, O: Braves, Buffaloes, Fighters, Hawks, Lions, Orions-. Los doce equipos de la liga japonesa de 1984, cada uno por su inicial y las dos bes distinguidas con un tile propio. La lee 0x4606 con el tramo que diga el bit 0 de 0xE440, y otra vez 0x7c91/0x7c9a
+F 0x4649 6
+
+# (partido en dos mas abajo: pasos_de_la_pelota y posturas_del_bate)
+
+# --- la tabla de punteros de 0x5048 ---
+# 0x5e75 hace `ld hl,05048h / call L_465B` (HL += A) y luego lee un word con
+# `ld a,(hl) / inc hl / ld h,(hl) / ld l,a`: punteros de 16 bits en
+# little-endian. Leidos crudos, los doce primeros son 0x5114, 0x511C, 0x5124,
+# 0x512C, 0x5134, 0x5134, 0x0000, 0x0000, 0x50EC, 0x50F4, 0x50FC, 0x5104:
+# todos caen dentro de este mismo bloque salvo los dos nulos.
+D 0x5048 0x5060 tabla_punteros_5048  12 punteros de 16 bits que lee 0x5e75; dos de ellos son 0x0000
+F 0x5048 w
+
+D 0x5060 0x5a32 datos_y_guiones_5060  El bloque grande al que apuntan tabla_punteros_5048 y los destinos de 0x64a7: guiones de graficos mas sus tablas. Formato interno no separado bloque a bloque en esta pasada
+F 0x5060 16
+
+# --- las dos tablas alternativas de 12 bytes ---
+# 0x5b5a elige entre 0x5b9c y 0x5ba8 segun el bit 0 de (0xE440) y copia la
+# elegida a 0xE140/0xE100. Doce bytes cada una, pegadas.
+# (identificado mas abajo)
+
+# (identificado mas abajo)
+
+# --- los registros iniciales de los jugadores ---
+# 0x5a59 hace `ld de,0e100h / ld hl,05bd9h / ld bc,00015h / ldir` y repite el
+# ldir con DE=0xE140: dos registros de 0x15 = 21 bytes, uno detras de otro.
+# (identificado mas abajo)
+
+# (identificado mas abajo)
+
+# (partido en tres mas abajo, por quien lo lee)
+
+D 0x6395 0x639b resto_6395  Cinco bytes entre dos rutinas; ningun salto aterriza en ellos
+F 0x6395 5
+
+# (identificado mas abajo: sprite_escondido)
+
+# --- la tabla de punteros de 0x655f ---
+# 0x6498 hace `ld hl,0655fh / ld a,b / rlca / rlca / call L_465B` y luego lee
+# un word: entradas de CUATRO bytes (dos rlca = A*4), de las que se toma el
+# primer word. Crudos: 0x6573, 0x657E, 0x657E, 0x6588, 0x6588, 0x6588,
+# 0x6590, 0x6590, 0x6598, 0x6598: punteros al bloque que sigue.
+# (identificado mas abajo)
+
+# (identificado mas abajo)
+
+D 0x65ad 0x6c0e guiones_65ad  Bloque grande de guiones de graficos, cargados desde varios sitios del arranque y desde 0x70c9/0x720a. Formato interno no separado en esta pasada
+F 0x65ad 16
+
+D 0x6e74 0x6e77 resto_6e74  Tres bytes entre el codigo y las tablas del efecto; ninguna lectura empieza en ellos
+F 0x6e74 3
+
+# (identificado mas abajo)
+
+# (identificado mas abajo)
+
+# (identificado mas abajo: destinos_de_los_lanzamientos)
+
+# (identificado mas abajo)
+
+# (identificado mas abajo)
+
+D 0x7cc2 0x7cc3 resto_7cc2  Un byte suelto entre dos rutinas
+F 0x7cc2 1
+
+# (identificado mas abajo: los dos juegos de lanzamientos de la maquina)
+
+# --- la marca oculta de Konami ---
+# La escondio Konami al final de muchos cartuchos y la descubrio Manuel Pazos
+# (@ManuelPazosMSX). tools/busca_marca_konami.py la encuentra aqui cerrando
+# en 0x7FFF: RC-724 y el titulo en katakana YA KI (U), que es 野球, yakyu,
+# beisbol.
+D 0x7ff6 0x8000 marca_oculta_konami  RC-724 y el titulo en katakana (YA KI U = 野球, beisbol), cerrando en 0x7FFF
+F 0x7ff6 10
+
+# ======================================================================
+# TANDA 1: el arranque, la interrupcion y el interprete de guiones
+# ======================================================================
+
+L 0x4010 interrupcion  El manejador que INIT engancha en H.KEYI. Todo el juego corre aqui dentro, igual que en King's Valley. Lee el estado del VDP para reconocer la interrupcion, se protege con DOS candados (0xE01E y 0xE01F) para no reentrar mientras hay una escritura de VRAM a medias, lleva el contador de fotogramas de 0xE000 y despacha el trabajo del cuadro; al final vuelve a leer el estado del VDP y, si hay otra interrupcion pendiente, se re-ejecuta a si mismo
+C 0x4010 lee el registro de estado del VDP: reconoce la interrupcion y la borra
+C 0x4013 (0xE01D) := 1: la senal de "estoy dentro de la interrupcion" que espera el bucle de L_4689
+C 0x4018 (0xE01E): si hay una escritura de VRAM a medias, la interrupcion no toca nada
+C 0x401c (0xE01F): el segundo candado, contra la reentrada
+C 0x4020 y lo cierra para este cuadro
+C 0x4022 HL = 0xE000, el contador de fotogramas
+C 0x4025 un fotograma mas
+C 0x4027 cada 32 fotogramas, ademas...
+C 0x402c ...baja en uno el contador lento de 0xE001
+C 0x402d el trabajo fijo de cada cuadro (0x43f5)
+C 0x4030 (0xE002) elige entre dos cuerpos de juego distintos
+C 0x4036 con el puesto: 0x7fce
+C 0x403b a cero: 0x43a6
+C 0x403e el motor de sonido (0x6cae), que corre siempre
+C 0x4042 (0xE003): solo con la partida en marcha corren las tres rutinas de abajo
+C 0x4051 (0xE01F) := 0: se abre el candado de reentrada
+C 0x4055 (0xE01D) := 1
+C 0x4059 vuelve a leer el estado del VDP
+C 0x405c bit 7: si hay OTRA interrupcion pendiente, se re-ejecuta entera en vez de volver
+
+L 0x4061 arranca_el_juego  El INIT que declara la cabecera. Engancha la interrupcion a mano -0xC3 en H.KEYI y 0x4010 detras-, borra 0xE000-0xE7FE con un ldir y deja la pila justo ahi, silencia el PSG, dibuja el guion de arranque y entra en el bucle principal. Mismo patron que King's Valley
+C 0x4061 sin interrupciones hasta tener el gancho puesto
+C 0x4062 HL = 0xFD9A, el gancho H.KEYI de la BIOS
+C 0x4065 un 0xC3 = `jp`, fabricado a mano
+C 0x4067 y detras la direccion del manejador
+C 0x406d borra 0xE000-0xE7FE propagando un cero con ldir
+C 0x4076 el primer byte a cero: L vale 0x00 en este punto
+C 0x4079 la pila queda al final de lo borrado (0xE7FF)
+C 0x407a (0xE660) := 0xB8, el valor del mezclador del PSG
+C 0x407f arranca el motor de sonido
+C 0x4082 los registros 8, 9 y 10 del PSG (los tres volumenes) a cero
+C 0x408e DE = 0x81A2 como direccion de VRAM: arma la escritura ahi
+C 0x4094 registro 15 del PSG
+C 0x409b enciende el piloto de CAPS
+C 0x409e modo de interrupcion 1
+C 0x40a1 DE = 0x4000: borra los 16 KB de VRAM de un tiron
+C 0x40b7 HL = tabla_registros_vdp, los ocho valores de R0 a R7
+C 0x40ba D = 8 registros, C = el numero del primero
+L 0x40be carga_registros_vdp  Escribe los ocho valores de tabla_registros_vdp en R0 a R7, subiendo a la vez el puntero y el numero de registro
+C 0x40be B = el valor de este registro
+C 0x40bf WRTVDP: lo programa
+C 0x40c2 siguiente valor
+C 0x40c3 siguiente numero de registro
+C 0x40c5 hasta los ocho
+
+L 0x4689 arma_escritura_vram  Arma la escritura de VRAM en la direccion que trae DE, y se protege de la interrupcion: pone 0xE01D a cero antes de SETWRT y, si al salir la interrupcion lo ha vuelto a poner, repite la operacion entera. Es el candado que hace que el juego pueda escribir VRAM con la interrupcion suelta
+C 0x4689 (0xE01D) := 0: la marca de "no ha entrado la interrupcion"
+C 0x468d SETWRT espera la direccion en HL
+C 0x468e arma la escritura en la VRAM
+C 0x4691 sin interrupciones para lo que venga detras
+C 0x4693 si la interrupcion ha entrado entre medias, ha puesto 0xE01D a 1...
+C 0x4697 ...y entonces todo esto se repite
+
+L 0x465b suma_a_hl  HL += A, con el acarreo propagado a H. El sumador de 8 bits que usan todas las tablas indexadas del cartucho
+C 0x465b A += L
+C 0x465c y vuelve a L
+C 0x465d sin desbordar, ya esta
+C 0x465e con desborde, H sube uno
+
+L 0x4589 encadena_guion  El comando 0x80 del interprete: lee del propio guion una direccion de VRAM nueva y sigue dibujando ahi. OJO al orden: aqui el byte ALTO va primero (`ld d,(hl)` antes que `ld e,(hl)`), al reves que en King's Valley
+C 0x4589 D = el byte ALTO de la direccion
+C 0x458b E = el bajo
+L 0x458d dibuja_guion  El interprete de guiones: arma la escritura de VRAM y ejecuta comandos de (HL). Es el mismo lenguaje que el de King's Valley (0x451a) mas un comando propio, el 0x01
+C 0x458d prepara el puerto de datos del VDP y cierra el candado
+C 0x4590 sin interrupciones mientras dura el tramo
+L 0x4591 lee_comando_de_guion  El cuerpo del interprete: un byte de comando por vuelta. El 0x01 es el comando extra de este cartucho; el resto es el lenguaje compartido -bit 7 puesto copia crudo, bit 7 a cero rellena, 0x00 acaba y 0x80 encadena-
+C 0x4591 A = el byte de comando
+C 0x4593 el 0x01 es el comando de repeticion de bloque
+C 0x4597 nibble bajo del byte siguiente: cuantos bytes se saltan al final
+C 0x459b nibble alto: cuantas veces se repite el tramo
+L 0x45a4 repite_tramo_de_guion  El comando 0x01: copia C veces el mismo tramo del guion, sin gastarlo, y al final salta los B bytes que ocupa
+C 0x45a6 copia el tramo a VRAM
+C 0x45ab una repeticion menos
+L 0x45ae salta_el_tramo  Adelanta el guion los B bytes del tramo ya repetido y vuelve por el comando siguiente
+C 0x45ae un byte mas
+C 0x45b1 y al comando siguiente
+L 0x45b3 despacha_comando_de_guion  Con la cuenta ya en A: distingue relleno de copia cruda comparando el byte enmascarado con el crudo -si son iguales, el bit 7 estaba a cero-, y trata aparte el caso de cuenta cero
+C 0x45b3 C se queda el byte crudo, con su bit 7
+C 0x45b4 A = la cuenta, sin el bit de modo
+C 0x45b6 cuenta cero: o es el fin o es el encadenado
+C 0x45b8 B = la cuenta
+C 0x45b9 iguales quiere decir bit 7 a cero: es un relleno
+C 0x45bc A = el byte a repetir, del propio guion
+C 0x45be lo escribe B veces
+C 0x45c3 con el bit 7 puesto: copia B bytes crudos
+L 0x45c8 fin_o_encadena  Con la cuenta a cero: si el byte crudo era 0x00 se acaba el guion, y si era 0x80 se encadena a otra direccion
+C 0x45c8 0x00 exacto: fin del guion
+C 0x45c9 0x80: encadena leyendo una direccion nueva
+
+L 0x46b2 rellena_vram  Escribe A en el puerto de datos del VDP B veces seguidas: el relleno solido. El VDP autoincrementa la direccion despues de cada byte
+C 0x46b4 recupera el puerto de datos en C
+C 0x46b8 escribe el byte
+C 0x46bb hasta agotar la cuenta
+
+L 0x45cc borra_bloque_de_ram  Pone a cero BC bytes desde (HL) propagando un cero con ldir, el truco de siempre
+C 0x45cd DE = HL+1: el destino va un byte por delante del origen
+C 0x45cf el primer byte a cero...
+C 0x45d1 ...y el ldir lo arrastra por el resto
+
+# ======================================================================
+# TANDA 2: la lectura de mandos y el resto del arranque
+# ======================================================================
+
+L 0x43f5 lee_entrada_del_menu  Lee el mando para el menu y deja en 0xE005 los seis bits utiles. Prueba primero el joystick y, si no da nada, repite con el acarreo puesto -que es como lee_un_mando elige la otra fuente-; si tampoco, cae en el teclado por 0x436e
+C 0x43f5 B = 2 intentos: joystick y luego la otra fuente
+C 0x43f7 el primer intento va sin acarreo
+L 0x43f8 intenta_una_fuente  Un intento de lectura: se queda con los seis bits utiles y, si alguno esta puesto, ya vale
+C 0x43f8 lee un mando
+C 0x43fb solo los seis bits de direccion y botones
+C 0x43fd guardado en 0xE005
+C 0x4401 con algo pulsado, se acabo
+C 0x4402 acarreo puesto: el intento siguiente va por la otra fuente
+C 0x4405 sin nada en ninguna de las dos: el teclado, filas 7 y 8
+
+L 0x43a6 lee_entrada_de_los_jugadores  Lee el mando de cada jugador en su sitio -0xE00C el primero y 0xE00F el segundo, y solo hay segundo si 0xE012 lo dice-, le suma lo que venga del teclado y luego calcula los bits RECIEN pulsados de cada uno
+C 0x43a6 B = 1 jugador por defecto
+C 0x43a8 (0xE012): el numero de jugadores de la partida
+C 0x43ae con dos jugadores, dos lecturas
+C 0x43b0 HL = 0xE00C, la entrada del primer jugador
+L 0x43b3 lee_un_jugador  Lee un mando y lo guarda en el hueco de este jugador, dejando HL en el del siguiente
+C 0x43b3 lee el mando
+C 0x43b6 los seis bits utiles
+C 0x43b8 guardado
+C 0x43b9 HL = 0xE00F, la entrada del segundo jugador
+C 0x43bc el jugador siguiente lee por la otra fuente
+C 0x43bf el teclado, filas 7 y 8
+C 0x43c6 lo que dio el teclado se SUMA a lo que dio el joystick del jugador 1
+C 0x43cd (0xE012) otra vez: sin segundo jugador no hay segunda suma
+C 0x43d5 la otra mitad del teclado, para el jugador 2
+L 0x43e2 calcula_flancos  Para cada jugador, deja en el tercer byte de su bloque solo los bits RECIEN pulsados: compara la lectura de este fotograma con la del anterior
+C 0x43e2 HL = 0xE00C, el bloque del primer jugador
+L 0x43e5 flanco_de_un_jugador  Compara la lectura nueva con la vieja y guarda el flanco de subida
+C 0x43e5 A = la lectura de este fotograma
+C 0x43e7 contra la del fotograma anterior
+C 0x43e8 C se la queda
+
+L 0x440f decide_repeticion  Con nada pulsado, limpia el biestable de repeticion de 0xE00B; con algo pulsado y el bit 0 ya puesto, no repite
+C 0x440f HL = 0xE00B, el biestable de repeticion
+C 0x4412 (0xE005), lo que se acaba de leer
+C 0x4416 con algo pulsado, sigue abajo
+C 0x4418 sin nada: el biestable a cero y fuera
+C 0x441a con el bit 0 puesto, la tecla ya se conto: no se repite
+C 0x441d los bits 4 y 5 de la lectura
+
+L 0x40cc carga_los_graficos  Segunda mitad del arranque: descomprime en VRAM los cuatro guiones grandes de graficos -dos por el interprete y dos por 0x4485- y deja preparado el primer estado del juego
+C 0x40cc A = 1 para 0x44ae
+C 0x40d6 DE = VRAM 0x6680 (0x2680 tras enmascarar): destino del primer guion
+C 0x40d9 HL = el guion de 0x4a27
+C 0x40dc arma la escritura ahi
+C 0x40df y lo descomprime
+C 0x40e7 DE = VRAM 0x6780: destino del segundo
+C 0x40ed HL = el guion de 0x49d4
+C 0x40f3 DE = VRAM 0x0000: la tabla de COLOR entera
+C 0x40f6 HL = el guion de 0x4800
+C 0x40fc DE = VRAM 0x2000: la tabla de PATRON entera
+C 0x40ff HL = el guion de 0x6800
+C 0x410e (0xE001) := 8, el contador lento que baja la interrupcion cada 32 cuadros
+C 0x4112 (0xE006): SUPOSICION, marca si ya se ha pasado por el menu
+C 0x4118 (0xE700) := 0x7a8b: el puntero de la escena que toca
+
+L 0x411e bucle_principal  El bucle principal, que corre con la interrupcion suelta: cada cuatro fotogramas mira el puntero de escena de 0xE700 y, mientras no sea el de cierre (0x786b), redibuja las tres franjas de la pantalla
+C 0x411e HL = 0xE000, el contador de fotogramas
+C 0x4122 uno de cada cuatro
+C 0x4126 sube el contador dos veces mas: el ciclo es de cuatro en cuatro
+C 0x4128 DE = (0xE700), el puntero de la escena actual
+C 0x412c contra 0x786b, el puntero de cierre
+C 0x4132 si coincide, no hay nada que redibujar
+C 0x4136 las tres franjas de la pantalla, una por llamada
+C 0x4147 y el relleno que las remata
+
+# ======================================================================
+# LOS NUEVE GUIONES INCRUSTADOS DETRAS DE UN `call 0x4582`
+# ======================================================================
+#
+# 0x4582 es un atajo del cartucho para no gastar registros: la direccion del
+# guion no llega en HL, va escrita en el propio codigo, en los dos bytes que
+# siguen al `call`. La rutina hace `ex (sp),hl` para pillar la direccion de
+# retorno, lee de ahi la palabra, adelanta el retorno dos bytes con dos `inc
+# hl`, la devuelve con otro `ex (sp),hl` y cae dentro de `encadena_guion`,
+# que lee del guion su destino en VRAM y lo dibuja.
+#
+# Los nueve valores caen dentro de bloques de guiones ya declarados
+# -0x46d4..0x4b53, 0x5060..0x5a32 y 0x65ad..0x6c0e-, que es lo que confirma
+# la lectura. El `!skip 0x4582 2` del fichero de entradas es lo que hace que
+# el trazado los tome por datos y no por instrucciones.
+
+D 0x40d4 0x40d6 guion_incrustado_40d4  Argumento del `call 0x4582` de 0x40d1: el guion de 0x47cf, el primero que dibuja el arranque
+F 0x40d4 w
+D 0x40e5 0x40e7 guion_incrustado_40e5  Argumento del `call 0x4582` de 0x40e2: el guion de 0x4a96
+F 0x40e5 w
+D 0x4229 0x422b guion_incrustado_4229  Argumento del `call 0x4582` de 0x4226: el guion de 0x65ad, cabeza del segundo bloque grande de guiones
+F 0x4229 w
+D 0x4246 0x4248 guion_incrustado_4246  Argumento del `call 0x4582` de 0x4243: el guion de 0x6a1c
+F 0x4246 w
+D 0x425d 0x425f guion_incrustado_425d  Argumento del `call 0x4582` de 0x425a: el guion de 0x477f
+F 0x425d w
+D 0x426f 0x4271 guion_incrustado_426f  Argumento del `call 0x4582` de 0x426c: el guion de 0x47b3
+F 0x426f w
+D 0x42ac 0x42ae guion_incrustado_42ac  Argumento del `call 0x4582` de 0x42a9: el guion de 0x4799
+F 0x42ac w
+D 0x42fb 0x42fd guion_incrustado_42fb  Argumento del `call 0x4582` de 0x42f8: otra vez el guion de 0x47b3, el mismo que 0x426f
+F 0x42fb w
+D 0x4d50 0x4d52 guion_incrustado_4d50  Argumento del `call 0x4582` de 0x4d4d: el guion de 0x5a28, el unico de los nueve que sale del bloque de arranque
+F 0x4d50 w
+
+# ======================================================================
+# TANDA 3: la presentacion, el menu y las dos maneras de leer el mando
+# ======================================================================
+
+L 0x415a mira_si_se_acaba_la_presentacion  Al final de cada vuelta de la presentacion: mientras el contador lento de 0xE001 no llegue a cero se sigue con la escena, y si alguien pulsa algo se corta antes de tiempo
+C 0x415a (0xE001), el contador lento que baja la interrupcion cada 32 cuadros
+C 0x415e a cero: se acabo el tiempo de la escena, al menu
+
+L 0x4160 mira_si_alguien_pulsa  Con tiempo de sobra, la presentacion solo se corta si hay algo pulsado: los seis bits utiles de 0xE005 son la lectura del cuadro
+C 0x4160 (0xE005), lo que dejo lee_entrada_del_menu en este cuadro
+C 0x4163 los seis bits utiles: cuatro direcciones y dos botones
+C 0x4165 nada pulsado: otra vuelta de presentacion
+
+L 0x4167 monta_el_menu  Deja la pantalla lista para elegir: borra la tabla de nombres entera, dibuja los tres guiones de 0x46d4, pone la marca en su sitio, se da 8 pasos de contador -unos ocho segundos- y arranca los dos cursores en 4 y en 2
+C 0x4167 sin interrupciones mientras se rehace la pantalla
+C 0x4168 borra la pantalla y dibuja los tres guiones del menu
+C 0x416b pinta la marca del jugador en la fila que le toca
+C 0x416e (0xE001) := 8: el plazo del menu antes de volver a la presentacion
+C 0x4174 (0xE441) := 4 y (0xE442) := 2: la posicion de partida de los dos cursores
+
+L 0x417c espera_en_el_menu  El bucle del menu. Cada vuelta pone 0xE002 a cero y solo lo sube a 1 si NO se ha pulsado el boton: con 0xE002 a 1 la interrupcion deja de leer los mandos y llama a 0x7fce, que es el piloto automatico de la demostracion. Si se agota el plazo de 0xE001 se salta a preparar la partida igual
+C 0x417c mira el mando y decide si esta pulsada la repeticion
+C 0x417f (0xE002) := 0: la interrupcion vuelve a leer los mandos de verdad
+C 0x4184 con el boton pulsado, a elegir el numero de jugadores
+C 0x4186 (0xE002) := 1: manda el piloto automatico de 0x7fce
+C 0x4188 y si ademas se agoto el plazo, la partida arranca sola
+C 0x418f otra vuelta
+
+L 0x4191 elige_numero_de_jugadores  Del bit 0 de 0xE00A -el que mueve arriba y abajo decide_repeticion- sale el numero de jugadores en 0xE012 y el guion que hay que hacer parpadear encima de la linea elegida: 0x46f3 para 1 PLAYER y 0x46ff para 2 PLAYERS
+C 0x4192 HL = 0xE00A, la opcion que se estaba moviendo en el menu
+C 0x4196 su bit 0 es el numero de jugadores...
+C 0x4198 ...y va a 0xE012, que es lo que mira todo el resto del cartucho
+C 0x419c HL = el guion del rotulo de un jugador
+C 0x419f el bit 0 otra vez, ahora al acarreo
+C 0x41a2 con el bit puesto, el rotulo de dos jugadores
+
+L 0x41a5 dibuja_la_eleccion_de_liga  Hace parpadear la linea de jugadores elegida y, DEBAJO Y SIN BORRAR NADA, escribe las dos ligas: CENTRAL y PACIFIC. Los dos guiones van pegados -0x470c acaba justo donde empieza 0x4718-, asi que basta con pedirle dos a dibuja_varios_guiones
+C 0x41a5 hace parpadear la linea elegida, 64 cuadros
+C 0x41a8 HL = 0x470c, el guion de CENTRAL
+C 0x41ab dos guiones: CENTRAL y, pegado, PACIFIC
+C 0x41b0 y la marca encima
+
+L 0x41b3 espera_a_que_pulsen  Se queda dando vueltas hasta que decide_repeticion devuelva acarreo, o sea hasta que alguien pulse el boton
+C 0x41b3 hasta que el acarreo diga que hay boton
+
+L 0x41c5 elige_la_liga  Guarda la liga elegida en 0xE440 -0 la Central, 1 la Pacific-, la hace parpadear y deja los dos cursores de equipo en el primero y en el cuarto, para que los dos jugadores no empiecen encima del mismo
+C 0x41c5 (0xE440) := el bit 0, la liga: de ahi salen las dos mitades de la tabla de iniciales
+C 0x41cb HL = 0xE440
+C 0x41d0 (0xE441) := 0, el equipo del primer jugador
+C 0x41d3 (0xE442) := 3, el del segundo
+C 0x41d5 HL = 0x4725, la parrilla de la Central
+C 0x41d8 el bit de la liga al acarreo otra vez
+C 0x41db con la Pacific, la parrilla de 0x4745
+
+L 0x41de pinta_la_parrilla_de_equipos  Dibuja la parrilla de la liga elegida -las seis iniciales espaciadas encima de la linea de la liga, y la otra liga borrada- y pone la marca del primer jugador en su equipo de partida
+C 0x41de dibuja la parrilla entera
+C 0x41e5 C = +1: el paso del cursor del jugador 1
+
+L 0x41ea elige_los_equipos  El bucle de eleccion: mete en 0x44dc los bits recien pulsados de cada jugador -0xE00E el primero, 0xE011 el segundo- y no sale hasta que los dos hayan confirmado. Con un solo jugador basta con el bit 6 de 0xE441
+C 0x41ea HL = 0xE441, el cursor del primer jugador
+C 0x41ed (0xE00E), los bits que el jugador 1 acaba de pulsar
+C 0x41f0 C = +1: su cursor avanza hacia arriba en la tabla
+C 0x41f2 la interrupcion tiene que seguir corriendo mientras se espera
+C 0x41f6 HL = 0xE442, el cursor del segundo
+C 0x41f9 (0xE011), los suyos
+C 0x41fc C = -1: el segundo recorre la tabla al reves
+C 0x4205 el bit 6 es "confirmado": sin el, otra vuelta
+C 0x4209 (0xE012): con un solo jugador ya no hay nada que esperar
+C 0x4210 con dos, tambien el segundo tiene que confirmar
+
+L 0x4214 limpia_los_confirmados  Baja el bit 6 de los dos cursores antes de seguir
+C 0x4214 el del segundo
+C 0x4217 y el del primero
+
+L 0x4219 prepara_la_partida  Siembra dos semillas de azar con el registro R del Z80, borra la pantalla, vuelve a cargar las dos tablas grandes de VRAM desde 0x4800 y 0x6800, dibuja el estadio y espera a que acabe la musica de 0x95
+C 0x4219 A = el registro de refresco del Z80: el azar mas barato que hay
+C 0x421b (0xE445), la primera semilla
+C 0x421e borra la tabla de nombres entera
+C 0x4221 R otra vez, ya con otro valor
+C 0x4223 (0xE446), la segunda semilla
+C 0x422b DE = VRAM 0x0000: la tabla de COLOR
+C 0x422e HL = 0x4800, su guion
+C 0x4234 DE = VRAM 0x2000: la tabla de PATRON
+C 0x4237 HL = 0x6800, el suyo
+C 0x423d pasa los dos equipos elegidos a 0xE443 y 0xE444
+C 0x4240 rellena la franja de 0x7b00
+C 0x4248 escribe las iniciales de los dos equipos
+C 0x424e (0xE001) := 4: el plazo de la presentacion del partido
+C 0x4254 A = 0x95, la melodia de entrada
+C 0x4256 se la pasa al motor de sonido
+
+L 0x4260 espera_el_plazo  No sigue hasta que el contador lento de 0xE001 se agote
+C 0x4260 (0xE001), que baja sola cada 32 cuadros
+
+L 0x4266 espera_a_que_calle_la_musica  0xE663 es la marca de "hay melodia sonando" del motor de sonido; hasta que no se apague, aqui no se sigue
+C 0x4266 (0xE663), la marca del motor de sonido
+
+L 0x4271 abre_la_pantalla_de_juego  Enciende el interruptor de 0xE003 -que es lo que deja correr las tres rutinas de juego dentro de la interrupcion- y se da tres pasos de plazo
+C 0x4271 (0xE003) := 1: la partida esta en marcha
+C 0x4276 (0xE001) := 3, el plazo de esta espera
+
+L 0x427c espera_el_saque  Espera a que el jugador pulse. Si por el camino 0xE002 se pone -o sea, si manda el piloto automatico-, copia 0xE005 a 0xE006 y, con algo pulsado, reinicia el cartucho entero saltando a INIT
+C 0x427c (0xE002): con el piloto automatico puesto, sigue abajo
+C 0x4282 (0xE005) -> (0xE006): deja escrito lo ultimo que se pulso
+C 0x4289 y con algo pulsado se vuelve a INIT: reinicio en frio
+
+L 0x428b mira_el_boton_de_saque  El bit 7 de 0xE402 es el "ya" del partido; hasta que no se pone, otra vuelta
+C 0x428b (0xE402), la palabra de estado del partido
+C 0x428e su bit 7 al acarreo
+C 0x4291 con el bit puesto, se apaga la partida y se decide que sigue
+C 0x4293 (0xE003) := 0: las rutinas de juego se paran
+C 0x429a con el piloto automatico puesto, reinicio en frio
+C 0x429e A = 0x93, la melodia del final del partido
+C 0x42a4 (0xE001) := 9, el plazo del marcador final
+
+L 0x42ae guarda_el_resultado  Pinta el marcador final, deja en el bit 0 de 0xE402 lo que devolvio 0x7ceb y copia los 32 bytes del bloque de 0xE410 al de 0xE700
+C 0x42af calcula el resultado del partido
+C 0x42b2 HL = 0xE402
+C 0x42b5 su bit 0 a cero...
+C 0x42b9 ...o a uno, segun el acarreo que dejo 0x7ceb
+C 0x42bb los 32 bytes del marcador...
+C 0x42c1 ...copiados de 0xE410 a 0xE700
+
+L 0x42c6 ensena_el_marcador  Deja el marcador en pantalla mientras corre el plazo. Con el bit 6 de 0xE402 puesto no se toca nada; sin el, borra el bloque de 0xE410 y, cada vez que el bit 5 del contador de cuadros esta puesto, lo repone desde la copia de 0xE700: eso es lo que hace que parpadee
+C 0x42c6 (0xE402) otra vez
+C 0x42c9 con el bit 6 puesto no hay parpadeo
+C 0x42cd borra los 31 bytes del bloque de 0xE410
+C 0x42d6 (0xE000), el contador de cuadros
+C 0x42d9 su bit 5: se enciende y se apaga cada 32 cuadros
+C 0x42dd con el bit puesto, repone el bloque desde la copia
+C 0x42e8 y lo vuelca a la pantalla
+
+L 0x42ec espera_el_plazo_del_marcador  El mismo plazo de siempre, el de 0xE001
+C 0x42ec (0xE001)
+
+L 0x42f2 espera_a_que_calle_el_final  Otra vez 0xE663, la marca del motor de sonido
+C 0x42f2 (0xE663)
+
+L 0x42fd vuelve_a_empezar  Reinicio en frio: salta a INIT con las interrupciones cortadas
+C 0x42fd nada de interrupciones durante el reinicio
+
+L 0x4301 vuelca_el_marcador  Escribe los doce bytes del marcador en la fila que le toque: con el bit 0 de 0xE402 puesto, el bloque de 0xE410 en la fila 0x782b; sin el, el de 0xE420 en la 0x784b
+C 0x4301 HL = 0xE410, el marcador de un lado
+C 0x4304 DE = VRAM 0x782b, su fila
+C 0x4307 (0xE402), el bit 0 al acarreo
+C 0x430d el otro lado: 0xE420 en la fila 0x784b
+C 0x4312 doce columnas
+
+L 0x4318 lee_un_mando  Lee un puerto de joystick del PSG. El acarreo elige cual: sin acarreo el registro 15 se pone a 0x8F -bit 6 a cero, puerto A- y con acarreo a 0xCF -bit 6 puesto, puerto B-. Luego lee el registro 14 y lo invierte, porque el PSG da los bits a cero cuando estan pulsados
+C 0x4318 E = 0x8F: bit 6 a cero, el primer puerto
+C 0x431a sin acarreo, ya vale
+C 0x431c E = 0xCF: bit 6 puesto, el segundo puerto
+C 0x431e registro 15 del PSG, el de la seleccion
+C 0x4323 registro 14, el de los datos del mando
+C 0x4328 el PSG da 0 en lo pulsado: se invierte
+
+L 0x432a lee_el_teclado_del_jugador_2  El segundo teclado del cartucho: W arriba, Z abajo, A izquierda, D derecha y SHIFT el boton. Se leen cuatro filas de la matriz -5, 2, 3 y 6-, se juntan sus bits en E y se recolocan con cuatro rotaciones y dos retoques hasta dejarlos en el orden del joystick (bit 0 arriba, 1 abajo, 2 izquierda, 3 derecha, 4 boton)
+C 0x432a D = fila 2 y E = fila 5
+C 0x432d H = fila 3 y L = fila 6
+C 0x4330 empieza por la fila 5
+C 0x4334 la matriz da 0 en lo pulsado: se invierte
+C 0x4335 bits 7 y 4 de esa fila: Z y W
+C 0x4338 la fila 2
+C 0x433d su bit 6: A
+C 0x4341 la fila 3
+C 0x4346 su bit 1: D
+C 0x434a que se guarda en el bit 5
+C 0x434d cuatro rotaciones: los cuatro bits altos bajan a los cuatro bajos
+C 0x4352 de ahi salen ya bien puestos arriba (W) e izquierda (A)
+C 0x4354 D estaba en el bit 1...
+C 0x4358 ...y derecha es el bit 3
+C 0x435a Z estaba en el bit 3...
+C 0x435e ...y abajo es el bit 1
+C 0x4361 y por ultimo la fila 6
+C 0x4366 su bit 0 es SHIFT
+C 0x436a que hace de boton, el bit 4
+
+L 0x436e lee_el_teclado_del_jugador_1  El primer teclado: las cuatro flechas y la barra espaciadora de la fila 8, mas la tecla de la fila 7 que hace de segundo boton. La fila 8 se recoloca en 0x4381 con la tabla de 0x4396
+C 0x436e la fila que venga en E, que siempre es la 8
+C 0x4372 invertida, como siempre
+C 0x4373 recoloca sus bits al orden del joystick
+C 0x4377 y ahora la fila de D, la 7
+C 0x437c su bit 6
+C 0x437e que baja al bit 5: el segundo boton
+
+L 0x4381 recoloca_la_fila_de_flechas  En la fila 8 de la matriz el bit 0 es la barra espaciadora y los bits 4 a 7 son izquierda, arriba, abajo y derecha; el joystick los quiere en 0, 1, 2 y 3 y en otro orden. La barra se lleva al bit 4 a mano y las cuatro flechas se traducen de golpe con la tabla de 0x4396
+C 0x4381 C = 0 de momento
+C 0x4383 saca el bit 0, la barra espaciadora
+C 0x4386 que en el joystick es el boton, el bit 4
+C 0x4388 tres rotaciones mas: cuatro en total
+C 0x438b y se queda con las cuatro flechas
+C 0x438d la tabla que las traduce
+C 0x4394 con la barra sumada
+
+
+# ======================================================================
+# TANDA 4: los ayudantes de VRAM y el manejo de los cursores
+# ======================================================================
+
+L 0x4433 sube_la_opcion  El otro lado de decide_repeticion: la opcion de 0xE00A sube en uno
+C 0x4433 HL baja de 0xE00B a 0xE00A
+C 0x4434 una opcion mas
+
+L 0x4435 pinta_la_marca_del_menu  Escribe la marca de "aqui estas" del menu. El bit 0 de 0xE00A elige cual de los dos tramos de tabla_4457 se recorre; cada byte del tramo se escribe en VRAM en 0x7a29 y en las filas de 32 en 32 que van detras, y el 0xFF cierra
+C 0x4435 HL = 0xE00A, la opcion elegida
+C 0x4438 sin interrupciones mientras se escribe
+C 0x443a DE = VRAM 0x7a29, la primera fila de la marca
+C 0x443d HL = el primer tramo de la tabla
+C 0x4440 el bit 0 de la opcion al acarreo
+C 0x4443 con el bit puesto, el segundo tramo
+
+L 0x4446 escribe_una_fila_de_la_marca  Un byte del tramo por fila; el 0xFF acaba
+C 0x4446 A = el byte que toca
+C 0x4447 0xFF cierra el tramo
+C 0x444a dos columnas por fila
+C 0x444d escritas en VRAM
+C 0x4451 DE += 0x40: dos filas de 32 mas abajo
+
+L 0x4461 borra_y_dibuja_el_menu  Monta la pantalla de titulo entera: borra la tabla de nombres, encadena los tres guiones que empiezan en 0x46d4 -el aviso de copyright, PLAY SELECT y las dos lineas de jugadores- y cae en 0x44b7, que remata con el rotulo del juego
+C 0x4461 borra la tabla de nombres
+C 0x4464 HL = 0x46d4, el primero de los tres guiones
+C 0x4467 tres guiones seguidos
+
+L 0x4469 dibuja_varios_guiones  Dibuja B guiones seguidos; cada uno deja HL justo detras del suyo, asi que la cuenta basta
+C 0x4469 la cuenta a salvo del interprete
+C 0x446a un guion, con su direccion de VRAM dentro
+C 0x4470 y al salir, el rotulo del juego
+
+L 0x4472 borra_la_tabla_de_nombres  Pone a cero las 768 posiciones de la tabla de nombres (VRAM 0x7800, o sea 0x3800 enmascarado): tres pasadas de 256 bytes. Como B entra a cero y el djnz cuenta 256 en ese caso, las tres pasadas suman 768 sin escribir la cuenta en ningun sitio
+C 0x4473 DE = VRAM 0x7800, la esquina de la tabla de nombres
+C 0x4476 arma la escritura ahi
+C 0x4479 tres pasadas
+C 0x447b A = 0, el byte con el que se borra
+
+L 0x447c una_pasada_de_borrado  B tambien entra a cero, y el djnz cuenta 256 cuando entra asi
+C 0x447c B = 0, que para el djnz son 256 bytes
+C 0x4480 una pasada menos
+
+L 0x4485 replica_el_tercio_en_los_otros_dos  El truco de este cartucho para llenar SCREEN 2 con un solo tercio de datos: copia 4095 bytes de VRAM a VRAM con los rangos SOLAPADOS a proposito. Con DE=0x0000 y HL=0x4800 -que enmascarado es 0x0800- lo que sale es el primer tercio de la tabla repetido en el segundo y en el tercero, porque a mitad de camino ya esta releyendo lo que acaba de escribir. El arranque lo hace dos veces: una para COLOR y otra para PATRON. Se queda un byte corto: el ultimo del tercer tercio no se llega a escribir
+C 0x4485 BC = 4095 bytes: los dos tercios que faltan, menos un byte
+C 0x4488 el juego de registros alterno guarda los dos puertos del VDP
+C 0x4489 (0x0007) de la BIOS: el puerto por el que se ESCRIBE la VRAM
+C 0x448d (0x0006) de la BIOS: el puerto por el que se LEE
+C 0x4491 y vuelve al juego normal
+
+L 0x4492 copia_un_byte_de_vram_a_vram  Un byte por vuelta, rearmando la lectura y la escritura cada vez: es lo que hace falta para convivir con la interrupcion. DE lleva el origen y HL el destino, y los dos `ex de,hl` los intercambian a mitad de vuelta
+C 0x4492 arma la LECTURA en DE
+C 0x4495 origen adelantado
+C 0x4497 C = el puerto de lectura
+C 0x4498 A = el byte que habia en la VRAM
+C 0x449b ahora DE es el destino y HL el origen
+C 0x449d arma la ESCRITURA en el destino
+C 0x44a0 destino adelantado
+C 0x44a3 C = el puerto de escritura
+C 0x44a4 y ahi va el byte
+C 0x44a7 los vuelve a cambiar para la vuelta siguiente
+C 0x44a8 un byte menos
+
+L 0x44ae espera_pasos_de_contador  Deja A en 0xE001 y no vuelve hasta que la interrupcion lo haya bajado a cero. Cada paso son 32 cuadros, mas o menos medio segundo
+C 0x44ae HL = 0xE001, el contador lento
+C 0x44b1 con los pasos que pide A
+
+L 0x44b2 espera_a_que_llegue_a_cero  El bucle de espera; quien lo baja es la interrupcion, cada 32 cuadros
+C 0x44b2 A = lo que queda
+
+L 0x44b7 dibuja_el_rotulo  EL ROTULO DEL JUEGO. Dos filas de 23 tiles CORRELATIVOS: del 0x40 al 0x56 arriba y del 0x57 al 0x6D abajo, en las filas 4 y 5 de la pantalla desde la columna 5. Como el dibujo es unico y ocupa 46 tiles seguidos, no hace falta guion ninguno: basta con contar. Comprobado dibujandolo desde la ROM con tools/pantallas.py, que saca "Konami's Baseball" con el bate y la pelota haciendo de eles finales
+C 0x44b7 DE = VRAM 0x7885, o sea fila 4 columna 5
+C 0x44ba A = 0x40, el primer tile del rotulo
+C 0x44bf A = 0x57, donde se quedo la fila de arriba
+
+L 0x44c1 veintitres_columnas  El ancho del rotulo, el mismo para las dos filas
+C 0x44c1 B = 23 columnas
+
+L 0x44c3 escribe_tiles_correlativos  Escribe B tiles en la fila de VRAM que trae DE, empezando por el numero que trae A y subiendo de uno en uno, y deja DE en la fila siguiente
+C 0x44c3 el primer tile a salvo
+C 0x44c4 arma la escritura en la fila
+C 0x44c7 y lo recupera
+
+L 0x44c8 un_tile_correlativo  Un tile por vuelta. A se guarda en el juego alterno mientras se recupera el puerto, porque no hay registro libre
+C 0x44c8 A a la sombra
+C 0x44ca el puerto de escritura de la BIOS
+C 0x44ce y A de vuelta
+C 0x44cf ahi va el tile
+C 0x44d2 el siguiente numero
+C 0x44d5 DE += 0x20: la fila de abajo
+
+L 0x44dc mueve_un_cursor  Mueve el cursor de un jugador con lo que traiga A. Los bits 2 y 3 son izquierda y derecha: mueven una casilla y levantan el bit 7 de (HL), que impide repetir mientras se siga pulsando. Los bits 4 y 5 son los botones: levantan el bit 6, que es lo que espera 0x41ea para dar por elegido el equipo. C trae el paso -+1 para un jugador, -1 para el otro-, que aqui sirve para mirar el cursor del OTRO y no dejar que los dos caigan en el mismo equipo
+C 0x44dc B guarda la lectura entera
+C 0x44dd los bits 2 y 3: izquierda y derecha
+C 0x44df sin ninguno, no hay movimiento
+C 0x44e1 el bit 7 ya puesto: la tecla sigue pulsada desde antes
+C 0x44e5 D = +1, hacia delante
+C 0x44e7 el bit 3 es el que va hacia delante
+C 0x44eb D = -1, hacia atras
+
+L 0x44ed mueve_y_esquiva_al_otro  Da el paso y, si con el se cae encima del equipo que ya tiene el otro jugador, da otro mas en el mismo sentido
+C 0x44ed levanta el bit 7: hasta que se suelte no se repite
+C 0x44f0 el paso
+C 0x44f4 A = el equipo en el que se ha quedado
+C 0x44f8 L += C: la casilla del OTRO jugador
+C 0x44fb la suya
+C 0x44fe iguales?
+C 0x4500 C cambia de signo para volver
+C 0x4505 si coincidian, otro paso mas
+C 0x4509 y L vuelve a donde estaba
+
+L 0x450f suelta_el_biestable  Sin nada pulsado, baja el bit 7 y el cursor vuelve a poder moverse
+C 0x450f el bit 7 a cero
+
+L 0x4511 mira_los_botones  Los bits 4 y 5 de la lectura son los dos botones; cualquiera de los dos levanta el bit 6, la marca de "elegido"
+C 0x4511 la lectura entera otra vez
+C 0x4512 los dos botones
+C 0x4514 ninguno: nada que hacer
+C 0x4515 el bit 6: equipo elegido
+
+L 0x4518 da_un_paso_circular  Suma D al nibble bajo de (HL) dejandolo dentro de 0 a 5: el 6 vuelve a 0 y el -1 salta al 5. El nibble alto, que lleva los dos biestables, se conserva aparte
+C 0x4518 A = el byte entero del cursor
+C 0x4519 E se queda los bits 7 y 6, los biestables
+C 0x451c y ahora solo el numero de equipo
+C 0x451f el paso
+C 0x4520 pasado el ultimo...
+C 0x4524 ...vuelve al primero
+
+L 0x4525 y_por_abajo_tambien  Y por debajo del primero, al ultimo
+C 0x4525 -1 en el nibble
+C 0x4529 A = 5, el ultimo equipo
+
+L 0x452b guarda_el_cursor  Junta el numero nuevo con los dos biestables y lo guarda
+C 0x452b los biestables de vuelta
+
+L 0x452d pinta_el_cursor  Dibuja la marca del jugador en la fila del equipo que tiene elegido. La fila sale de la tabla de 0x4765 y el dibujo -la marca mas seis huecos- de 0x4771 para un jugador y de 0x4778 para el otro. Luego repite la marca sola, 0xF1 o 0xF2 segun el jugador, en la fila que dice la tabla de 0x476b
+C 0x452d solo el numero de equipo
+C 0x4530 D = 0x7a: todas las filas del menu estan en 0x7axx
+C 0x4532 la tabla de filas
+C 0x4538 E = la fila que le toca
+C 0x4539 el dibujo del jugador 1
+C 0x453c C dice de que jugador se trata
+C 0x4541 el del jugador 2
+
+L 0x4544 escribe_los_siete_bytes  Los siete bytes del dibujo, uno por columna
+C 0x4545 arma la escritura y deja el puerto en C
+C 0x4548 siete columnas
+
+L 0x454a una_columna_del_cursor  Byte a byte, vigilando el final de la fila
+C 0x454a A = el byte que toca
+C 0x454c al puerto del VDP
+C 0x454e columna siguiente
+C 0x4550 pasada la columna 0x58...
+C 0x4554 ...se vuelve a la 0x46 y hay que rearmar la escritura
+
+L 0x455b repone_la_marca  Con el dibujo ya puesto, vuelve a escribir la marca sola -0xF1 el jugador 1, 0xF2 el jugador 2- en la fila que le corresponde al equipo del OTRO indice
+C 0x4561 B = 0xF1, la marca del jugador 1
+C 0x4563 C dice el jugador
+C 0x4568 B = 0xF2, la del jugador 2
+C 0x456a L += C: la casilla contigua
+C 0x456e su numero de equipo
+C 0x4570 la otra tabla de filas
+C 0x4576 D = 0x7a otra vez
+C 0x4579 arma la escritura y deja el puerto en C
+C 0x457d y ahi va la marca
+
+L 0x4582 dibuja_el_guion_de_aqui_al_lado  Dibuja el guion cuya direccion va ESCRITA DETRAS DEL PROPIO `call`. Coge la direccion de retorno de la pila con `ex (sp),hl`, lee de ahi la palabra, adelanta el retorno dos bytes para que no se ejecuten como codigo y cae dentro de encadena_guion. Nueve sitios del cartucho llaman asi
+C 0x4582 HL = la direccion de retorno, que es donde esta el argumento
+C 0x4583 E = el byte bajo del guion
+C 0x4585 D = el alto
+C 0x4586 el retorno, ya dos bytes mas alla
+C 0x4587 devuelto a la pila
+C 0x4588 y el guion a HL
+
+L 0x45d4 esconde_todos_los_sprites  Escribe 0xCF en los 128 bytes de la tabla de atributos de sprites (VRAM 0x7b00, o sea 0x3b00): los 32 sprites se van a la linea 207 y desaparecen de en medio
+C 0x45d4 DE = VRAM 0x7b00, la tabla de atributos
+C 0x45d7 B = 128 bytes, C = 0xCF, la linea 207
+
+L 0x45dd dibuja_parpadeando  Dibuja un guion y lo borra alternandolo cada ocho cuadros, hasta que pasan 64. Pone el contador de cuadros a cero, y luego mira dos bits suyos: el 3 dice si toca borrar o dibujar y el 6 es el que corta a los 64 cuadros
+C 0x45dd (0xE000) := 0: el contador de cuadros empieza de nuevo
+
+L 0x45e1 una_vuelta_del_parpadeo  Con el bit 3 puesto -ocho cuadros de cada dieciseis- borra la fila; con el a cero, dibuja el guion
+C 0x45e1 la interrupcion tiene que correr para que el contador avance
+C 0x45e2 el contador de cuadros
+C 0x45e5 su bit 3 cambia cada ocho cuadros
+C 0x45e8 a cero: toca dibujar
+C 0x45eb D = el byte alto de la direccion de VRAM que trae el guion
+C 0x45ed E = el bajo
+C 0x45ef 26 columnas...
+C 0x45f1 ...a cero: la fila borrada
+
+L 0x45f9 dibuja_y_mira_si_toca_parar  Dibuja el guion entero y sale cuando el bit 6 del contador se pone, o sea a los 64 cuadros
+C 0x45fa dibuja el guion desde su direccion
+C 0x45fd el contador de cuadros
+C 0x4600 su bit 6: 64 cuadros
+
+L 0x4606 escribe_las_iniciales  Pone en el marcador la inicial del equipo de cada jugador. El bit 0 de 0xE440 -la liga- elige cual de los dos tramos de iniciales_de_los_equipos se usa, y el numero de equipo de cada uno indexa dentro
+C 0x4606 DE = VRAM 0x7829, el hueco del primer jugador
+C 0x4609 HL = el primer tramo de iniciales
+C 0x460c (0xE440), la opcion del menu
+C 0x4612 con el bit puesto, el otro tramo
+
+L 0x4615 la_inicial_de_cada_uno  Primero la del jugador 1 y luego la del 2, cada una en su hueco
+C 0x4615 (0xE441), el equipo del primer jugador
+C 0x461b (0xE442), el del segundo
+C 0x461e DE = VRAM 0x7849, su hueco
+
+L 0x4621 escribe_una_inicial  Un solo tile: el que dice la tabla para ese numero de equipo
+C 0x4622 solo el numero, sin los biestables
+C 0x4627 C = el tile de la inicial
+C 0x4629 un solo byte
+
+L 0x462f traduce_los_equipos  Pasa los dos numeros de cursor -0xE441 y 0xE442, de 0 a 5- por la tabla de 0x47c9 y deja el codigo de equipo de verdad en 0xE443 y 0xE444, que es lo que lee la partida
+C 0x462f (0xE441), el cursor del primer jugador
+C 0x4632 HL = 0x47c9, la tabla que traduce
+C 0x4635 la direccion de la tabla, a salvo
+C 0x463a (0xE443), el equipo del primer jugador
+C 0x463e (0xE442), el cursor del segundo
+C 0x4645 (0xE444), el equipo del segundo
+
+L 0x4655 avanza_veintitres  HL += 23, el ancho de las filas del marcador
+C 0x4655 23 columnas
+
+L 0x4659 avanza_una_fila  HL += 32, que es una fila entera de la pantalla
+C 0x4659 32 columnas
+
+L 0x4660 arma_escritura_con_candado  Como arma_escritura_vram pero ademas cierra el candado de 0xE01E mientras dura la operacion: eso impide que la interrupcion escriba VRAM por su cuenta en medio de un guion largo
+C 0x4660 (0xE01D) := 0, la marca de "no ha entrado la interrupcion"
+C 0x4665 (0xE01E) := 1: el candado, cerrado
+C 0x4668 SETWRT quiere la direccion en HL
+C 0x466e si la interrupcion ha entrado, 0xE01D esta a 1...
+C 0x4672 ...y hay que rehacerlo entero
+C 0x4674 y por fin se abre el candado
+
+L 0x4678 arma_lectura_vram  Lo mismo que arma_escritura_vram pero para leer: SETRD en vez de SETWRT, y el mismo reintento si la interrupcion se cuela
+C 0x4678 (0xE01D) := 0
+C 0x467c SETRD quiere la direccion en HL
+C 0x4682 si la interrupcion ha entrado...
+C 0x4686 ...se repite
+
+L 0x469a copia_bytes_con_candado  Arma la escritura con el candado cerrado y copia B bytes crudos desde (HL)
+C 0x469a con candado, que puede ser largo
+
+L 0x469d copia_bytes_a_vram  Copia B bytes desde (HL) al puerto de datos del VDP. El VDP autoincrementa la direccion despues de cada byte, asi que no hay que rearmar nada
+C 0x469d la cuenta, a salvo del que recupera el puerto
+C 0x469e C = el puerto de datos
+C 0x46a1 A = el byte del origen
+C 0x46a2 y al VDP
+
+L 0x46a9 arma_y_copia  Arma la escritura en DE, sin candado, y copia B bytes desde (HL)
+C 0x46a9 sin candado: son pocos bytes
+
+L 0x46ae rellena_con_candado  Arma la escritura con candado y rellena B veces con el byte que trae C
+C 0x46ae con candado
+C 0x46b1 A = el byte con el que se rellena
+
+L 0x46be arma_y_rellena  Arma la escritura en DE, sin candado, y rellena B veces con el byte de C. OJO: pisa A con C nada mas entrar, asi que lo que trajera A da igual
+C 0x46be sin candado
+C 0x46c1 A = C, y lo que hubiera en A se pierde
+
+L 0x46c4 arma_con_candado_y_da_el_puerto  Arma la escritura con candado y deja el puerto de datos en C, listo para un `out (c),a`
+C 0x46c4 con candado
+
+L 0x46c7 dame_el_puerto_de_datos  Deja en C el puerto de datos del VDP, leido de la tabla de la BIOS en 0x0007. El cartucho no lo escribe fijo en ningun sitio: siempre lo pide aqui
+C 0x46c7 (0x0007) de la BIOS
+C 0x46ca y a C, que es donde lo quiere `out (c),a`
+
+# ======================================================================
+# LA FUENTE DEL CARTUCHO, LEIDA DIBUJANDOLA
+# ======================================================================
+#
+# Los textos no van en ASCII: van en numeros de tile, y el orden de las
+# letras no es el alfabetico sino el que hizo falta. Dibujando la tabla de
+# patrones desde la ROM con tools/pantallas.py se leen una por una:
+#
+#     0xD0 B   0xD1 D   0xD2 J   0xD3 O   0xD4 T   0xD5 I   0xD6 C   0xD7 K
+#     0xD8 P   0xD9 L   0xDA A   0xDB Y   0xDC E   0xDD R   0xDE S   0xDF G
+#     0xE0 H   0xE1 M   0xE2 V   0xE3 W   0xE4 F   0xE5 U   0xE6 N   0xE7 X
+#     0xE8 Bu  0xE9 ,   0xEA (c)
+#     0xF0 a 0xF9: las cifras del 0 al 9
+#
+# Fijarse en 0xD8..0xDE: P L A Y E R S. La palabra entera en tiles seguidos,
+# que es lo que permite escribir "1 PLAYER" y "2 PLAYERS" sin tabla ninguna.
+# Y el 0xE8 es una "Bu" en un solo tile, que existe solo para distinguir a los
+# Buffaloes de los Braves en la parrilla de la Pacific.
+#
+# Con esto los guiones del arranque se leen solos:
+#     0x46d4  "(c)KONAMI 1984"
+#     0x46e4  "PLAY SELECT"
+#     0x46f3  "1 PLAYER"    0x46ff  "2 PLAYERS"   (en video inverso)
+#     0x470c  "CENTRAL"     0x4718  "PACIFIC"
+#
+# ======================================================================
+# UN GUION QUE NO DIBUJA NADIE: 0x4af0..0x4b53
+# ======================================================================
+#
+# 99 bytes que son un guion perfectamente valido -acaba exactamente en
+# 0x4b53, donde vuelve a haber codigo- y que cargan cuatro patrones de sprite
+# en VRAM 0x1800, otros cuatro en 0x1d00 y cinco atributos en 0x3b3c.
+# No se ha encontrado quien lo dibuje:
+#
+#   - el arranque dibuja el guion de 0x4a96, que ACABA en 0x4af0, y luego
+#     pisa HL con 0x49d4: no encadena;
+#   - en toda la ROM no hay ni un solo valor inmediato de 16 bits entre
+#     0x4af0 y 0x4b53;
+#   - las dos tablas de punteros a guiones -0x5048 y 0x655f- apuntan todas
+#     dentro de sus propios bloques;
+#   - los nueve `call 0x4582` llevan su argumento escrito al lado, y ninguno
+#     de los nueve es este.
+#
+# Es un resultado NEGATIVO -no se ha encontrado el lector, que no es lo mismo
+# que demostrar que no existe-, pero apunta a bytes que se quedaron dentro.
+# SUPOSICION: que sean restos de una version anterior es lo mas probable, pero
+# el binario no lo dice.
+
+# ======================================================================
+# EL BLOQUE DE GUIONES DEL ARRANQUE, PARTIDO POR USO
+# ======================================================================
+#
+# Los guiones se encadenan: cada uno acaba justo donde empieza el siguiente,
+# y ejecutando el interprete en Python (tools/guiones.py) se sabe el corte
+# exacto de cada uno. Entre medias hay tablas que no son guiones.
+D 0x46d4 0x4765 guiones_del_titulo  Los guiones de la pantalla de titulo y de la eleccion, en cadena: 0x46d4 el aviso de copyright, 0x46e4 PLAY SELECT, 0x46f3 y 0x46ff las dos lineas de jugadores en video inverso, 0x470c CENTRAL, 0x4718 PACIFIC, y 0x4725 y 0x4745 las dos parrillas de seis equipos
+F 0x46d4 16
+
+D 0x4765 0x476b filas_del_cursor_a  Las seis filas de VRAM -solo el byte bajo, el alto siempre es 0x7a- en las que 0x452d escribe el dibujo del cursor: 0x57 y luego 0x48, 0x4b, 0x4e, 0x51 y 0x54, o sea tres columnas de separacion entre equipo y equipo
+F 0x4765 6
+
+D 0x476b 0x4771 filas_del_cursor_b  Las mismas seis filas rotadas una posicion, que es la tabla con la que 0x455f repone la marca en la casilla contigua
+F 0x476b 6
+
+D 0x4771 0x4778 dibujo_del_cursor_1  Los siete tiles que 0x452d escribe para el jugador 1: la marca 0xF1 y seis huecos, que de paso borran donde estuviera antes
+F 0x4771 7
+
+D 0x4778 0x477f dibujo_del_cursor_2  Lo mismo para el jugador 2, con la marca 0xF2
+F 0x4778 7
+
+D 0x477f 0x47c9 guiones_del_marcador  Tres guiones encadenados que escriben las tres lineas del marcador -filas 9, 10 y 11 de la pantalla-, cada uno con su version: 0x477f lo dibuja 0x425a, 0x4799 lo dibuja 0x42a9 y 0x47b3 lo dibujan 0x426c y 0x42f8
+F 0x477f 16
+
+D 0x47c9 0x47cf traduccion_de_equipos  Los seis codigos de equipo de verdad, indexados por la posicion del cursor (0 a 5). 0x462f los pasa a 0xE443 y 0xE444, que es lo que lee la partida
+F 0x47c9 6
+
+D 0x47cf 0x4af0 guiones_de_los_graficos  El guion largo del arranque y sus reentradas. 0x47cf carga de una tirada los colores y los patrones del primer tercio y acaba en 0x4a96; 0x49d4 y 0x4a27 son ENTRADAS A MITAD de ese mismo guion, que el arranque vuelve a ejecutar con otra direccion de VRAM para repetir su cola en otro sitio; y 0x4a96 es el ultimo tramo
+F 0x47cf 16
+
+D 0x4af0 0x4b53 guion_huerfano  Guion valido que no dibuja nadie: carga cuatro patrones de sprite en VRAM 0x1800, otros cuatro en 0x1d00 y cinco atributos en 0x3b3c. Ver la explicacion de arriba
+F 0x4af0 16
+
+# ======================================================================
+# TANDA 5: el motor de movimiento y la division de 16 entre 8
+# ======================================================================
+#
+# LA FICHA DE UN MOVIL. Casi todo lo que se mueve en el campo -la pelota, el
+# corredor, el que lanza- se describe con una ficha de 0x17 bytes a la que se
+# apunta con IX. Los huecos que este tramo usa:
+#
+#     +0x00  banderas: bit 0 en marcha, bit 6 "se ha movido este cuadro"
+#     +0x01  acumulador de subpixel, 16 bits
+#     +0x03  el paso que se le suma cada cuadro, 16 bits
+#     +0x07  X en pixeles          +0x08  Y en pixeles
+#     +0x0c  X minima  +0x0d  X maxima  +0x0e  Y minima  +0x0f  Y maxima
+#     +0x10  banderas de direccion: bit 7 el eje que manda, bits 6 y 5 los
+#            signos
+#     +0x11  lo que le queda por recorrer en X
+#     +0x12  lo que le queda por recorrer en Y
+#     +0x13  y +0x15, dos parejas de 16 bits que llevan la curva
+#
+# El truco del subpixel es el mismo de King's Valley: la posicion fina va en
+# 16 bits, cada cuadro se le suma el paso, y el BYTE ALTO del acumulador es
+# cuantos pixeles enteros toca mover; se gasta y se pone a cero, y el resto se
+# queda para el cuadro siguiente.
+
+L 0x4b53 mueve_un_movil  Un cuadro de movimiento de la ficha que trae HL. Suma el paso al acumulador de subpixel, se queda con los pixeles enteros que salgan, y con ellos avanza por los dos ejes respetando los topes. Si al acabar no le queda nada por recorrer en el eje que manda, apaga la ficha
+C 0x4b53 IX = la ficha, que es como se lee de aqui en adelante
+C 0x4b56 el bit 0: si esta parada, no hay nada que hacer
+C 0x4b5a (0xE403) := 0
+C 0x4b5d el bit 6: esta ficha se ha tocado este cuadro
+C 0x4b61 DE = el acumulador de subpixel
+C 0x4b65 BC = el paso de cada cuadro
+C 0x4b6b HL = acumulador + paso
+C 0x4b6f y de vuelta a la ficha
+C 0x4b72 el byte ALTO son los pixeles enteros...
+C 0x4b74 ...y si no hay ninguno, se acabo el cuadro
+C 0x4b76 se gastan: el byte alto vuelve a cero
+C 0x4b7b el bit 6 se baja otra vez
+C 0x4b7f HL = ficha + 0x10, la parte de la trayectoria
+C 0x4b86 lo que queda en X...
+C 0x4b89 ...o lo que queda en Y, segun el eje que mande
+C 0x4b93 mientras quede algo, la ficha sigue viva
+C 0x4b94 y si no queda nada, se apaga
+
+L 0x4b97 recorre_los_pixeles  Descuenta los B pixeles de este cuadro del tramo que queda (+0x16). Mientras haya tramo se mueve por el eje que manda; cuando el tramo se agota, si hay una curva declarada en +0x13 se recalcula el paso y se mueve tambien por el otro eje
+C 0x4b97 HL = ficha + 0x16, lo que queda del tramo
+C 0x4b9d menos los pixeles de este cuadro
+C 0x4b9f sin pasarse, no hay nada mas que hacer
+C 0x4ba2 HL = ficha + 0x14
+C 0x4ba4 0xFF en los dos bytes quiere decir "sin curva"...
+C 0x4bae ...y entonces solo se mueve por el eje que manda
+
+L 0x4bb0 rehace_el_paso  Con el tramo agotado y curva declarada: suma la curva de +0x13 al paso de +0x15, guarda el resultado y, si el byte alto se sale, lo pasa al bajo. Es como el movil dobla
+C 0x4bb1 DE = el paso actual, de +0x15 y +0x16
+C 0x4bb6 BC = la curva, de +0x13 y +0x14
+C 0x4bbb el paso nuevo
+C 0x4bc0 guardado en +0x15
+C 0x4bc2 si el byte alto tiene el bit 7...
+C 0x4bc8 ...se baja al bajo y el alto se queda a cero
+
+L 0x4bcb guarda_el_paso_nuevo  Deja el byte alto y decide con que cuenta se mueve por el otro eje
+C 0x4bcb el byte alto del paso nuevo
+C 0x4bce con el bit 7 puesto se mueve lo que diga B...
+C 0x4bd2 ...y si no, un solo pixel
+
+L 0x4bd4 mueve_por_el_otro_eje  Un paso por el eje que NO manda
+C 0x4bd7 y el paso por el eje que manda
+
+L 0x4bd8 mueve_por_el_eje_que_manda  La salida comun: mover por el eje principal
+L 0x4bdc elige_el_eje_secundario  El bit 7 de +0x10 dice cual de los dos ejes manda; aqui se quiere el OTRO
+C 0x4bdc el bit 7: el eje que manda
+C 0x4be0 si manda Y, el secundario es X
+
+L 0x4be4 elige_el_eje_principal  Lo mismo del reves: aqui se quiere el eje que manda
+C 0x4be4 el bit 7 otra vez
+C 0x4be8 si manda X, por X
+
+L 0x4bec mueve_en_x  Suma B a la X, con el signo que diga el bit 5, y solo si el resultado cae dentro de los topes de +0x0c y +0x0d. Lo que se avanza se descuenta de lo que quedaba por recorrer, sin bajar de cero
+C 0x4bec A = los pixeles de este cuadro
+C 0x4bed el bit 5 es el signo en X
+C 0x4bf3 hacia atras
+C 0x4bf5 sobre la X de ahora
+C 0x4bf8 por debajo del tope de abajo, no se mueve
+C 0x4bfc ni por encima del de arriba
+C 0x4c00 la X nueva
+C 0x4c03 y lo que le quedaba por recorrer...
+C 0x4c06 ...menos lo andado
+C 0x4c09 sin bajar de cero
+
+L 0x4c0a guarda_lo_que_queda_en_x  Lo que le queda por recorrer en X
+L 0x4c0f mueve_en_y  Igual que en X pero con la Y de +0x08, el signo del bit 6 y los topes de +0x0e y +0x0f
+C 0x4c0f A = los pixeles de este cuadro
+C 0x4c10 el bit 6 es el signo en Y
+C 0x4c16 hacia arriba
+C 0x4c18 sobre la Y de ahora
+C 0x4c1b los dos topes de Y
+C 0x4c23 la Y nueva
+C 0x4c26 lo que le quedaba en Y...
+C 0x4c29 ...menos lo andado
+
+L 0x4c2d guarda_lo_que_queda_en_y  Lo que le queda por recorrer en Y
+L 0x4c30 marca_la_ficha_movida  El bit 6 de la ficha: alguien la ha movido este cuadro
+C 0x4c30 el bit 6 de +0x00
+
+L 0x4c35 apunta_hacia_un_destino  Prepara la trayectoria de una ficha hacia un destino. Recibe la posicion de salida en (D,E) y la de llegada en (B,C), y deja en la ficha las dos distancias en valor absoluto, los signos en los bits 5 y 6, cual de los dos ejes es el largo en el bit 7, y la pendiente que sale de dividir el corto entre el largo. Es lo que hace que la pelota vaya recta a donde tiene que ir
+C 0x4c37 los siete primeros bytes de la ficha, a cero
+C 0x4c40 la distancia en el primer eje
+C 0x4c42 iguales: no hay distancia
+C 0x4c46 el bit 5: hacia delante
+C 0x4c4b el bit 5 a cero: hacia atras
+C 0x4c50 la distancia de 1 se cuenta como 2
+
+L 0x4c55 guarda_la_distancia_larga  La distancia del primer eje, ya en valor absoluto
+L 0x4c57 la_distancia_del_otro_eje  Lo mismo para el segundo eje, con el signo en el bit 6
+C 0x4c58 la distancia en el segundo eje
+C 0x4c59 iguales: no hay distancia
+C 0x4c5d el bit 6: hacia delante
+C 0x4c62 el bit 6 a cero: hacia atras
+
+L 0x4c6b decide_el_eje_que_manda  De las dos distancias, la mayor es la que manda: su bit va al 7 de las banderas, y las dos se dejan en 0xE701 y 0xE702 para la division que viene
+C 0x4c6c B = la primera distancia
+C 0x4c6e A = la segunda
+C 0x4c70 si la segunda es menor, manda la primera
+C 0x4c74 el bit 7: manda el primer eje
+
+L 0x4c78 manda_el_otro  Con la segunda distancia mas grande, manda el segundo eje
+C 0x4c7c el bit 7 a cero
+
+L 0x4c7e divide_y_guarda_la_pendiente  Divide la distancia corta entre la larga -dos veces, para sacar tambien el segundo decimal- y guarda el resultado en la ficha como el paso de cada cuadro. Al final enciende el bit 0: la ficha ya esta en marcha
+C 0x4c7e (0xE701) = la distancia corta, que es el dividendo
+C 0x4c82 (0xE702) = la larga, que es el divisor
+C 0x4c86 (0xE700) = 0: el resto empieza vacio
+C 0x4c89 las dos divisiones
+C 0x4c8f el primer decimal
+C 0x4c94 y el segundo
+C 0x4c98 HL vuelve al principio de la ficha
+C 0x4c9e el bit 0: en marcha
+
+L 0x4ca1 divide_dos_veces  Divide una vez, se queda el cociente en 0xE703 y mete el resto de vuelta como dividendo, y vuelve a dividir. De ahi salen los dos bytes de la pendiente
+C 0x4ca1 la primera division
+C 0x4ca8 B = el resto
+C 0x4caa A = el cociente
+C 0x4cab el resto pasa a ser el dividendo nuevo
+C 0x4cae y el cociente se guarda en 0xE703
+
+L 0x4cb0 divide_16_entre_8  La division de siempre, de restar y desplazar, ocho vueltas. El dividendo esta en 0xE701 y se va convirtiendo en el cociente segun entran los bits por abajo; el resto se acumula en 0xE700 y el divisor esta en 0xE702
+C 0x4cb1 ocho vueltas, una por bit
+
+L 0x4cb3 una_vuelta_de_la_division  Sube un bit del dividendo al resto y prueba a restarle el divisor
+C 0x4cb3 HL = 0xE701, el dividendo
+C 0x4cb7 su bit de mas peso sale por el acarreo...
+C 0x4cba ...y entra por abajo del resto
+C 0x4cbc A = el resto
+C 0x4cbf menos el divisor
+C 0x4cc0 si no cabe, el bit del cociente se queda a cero
+C 0x4cc3 cabe: bit del cociente a uno
+C 0x4cc6 y el resto se queda con lo que sobra
+
+L 0x4cc7 otra_vuelta_de_division  Hasta las ocho
+C 0x4cc7 una vuelta menos
+
+# ======================================================================
+# TANDA 6: el lanzamiento, desde que se arma hasta que llega al bateador
+# ======================================================================
+#
+# 0xE100 es la palabra de estado del lanzador, y sus bits son los que eligen
+# por que rama se pasa cada cuadro:
+#     bit 0  hay lanzamiento en marcha
+#     bit 1  la pelota va por el aire (0x4dac)
+#     bit 2  el lanzador esta armando el brazo (0x4d74)
+#     bit 3  la jugada ha terminado y toca ensenar la cuenta (0x4f07)
+#     bit 4  de que lado se lanza
+# La ficha de la pelota vive en 0xE120 y la posicion en pantalla en 0xE130
+# (columna) y 0xE131 (fila).
+
+L 0x4ccc lleva_el_lanzamiento  El cuadro del lanzador. Mira los bits de 0xE100 en orden -aire, brazo, cuenta- y, si no hay ninguno, lee el mando: con direccion pulsada arma el lanzamiento, y con el boton lo tira ya
+C 0x4ccc HL = 0xE100, la palabra de estado
+C 0x4ccf sin el bit 0 no hay lanzamiento que llevar
+C 0x4cd2 el bit 1: la pelota ya va por el aire
+C 0x4cd7 el bit 2: el brazo se esta armando
+C 0x4cdc el bit 3: la jugada acabo y toca la cuenta
+C 0x4ce2 lee el mando del jugador que lanza
+C 0x4ce7 los cuatro bits altos: sin nada pulsado no pasa nada
+C 0x4cea el bit 1, abajo
+C 0x4cef los bits 0, 2 y 3
+C 0x4cf3 (0xE220) bit 7
+C 0x4cfa (0xE388) y (0xE38A) := 1
+C 0x4d02 (0xE400) := 8, el estado de la jugada
+C 0x4d06 el bit 0 de 0xE100 se apaga: este lanzamiento se anula
+
+L 0x4d10 arma_el_brazo  Enciende el bit 2 -el lanzador arma- y monta la ficha de la pelota: la velocidad sale de 0xE363 y el efecto de 0xE364, la pareja de bytes de tabla_4f97 da el paso de cada cuadro, y la potencia se recorta a 4
+C 0x4d11 el bit 2: armando
+C 0x4d14 cinco cuadros por postura
+C 0x4d16 HL = 0xE121
+C 0x4d19 (0xE364), el efecto elegido
+C 0x4d1e (0xE363), la velocidad
+C 0x4d24 tabla_4f97, indexada por la velocidad por dos
+C 0x4d2e la pareja de bytes que sale de ahi...
+C 0x4d2f ...es el paso de la pelota
+C 0x4d37 tres
+C 0x4d3a diez cuadros
+C 0x4d3d la velocidad partida por dos...
+C 0x4d43 ...y recortada a 4 como mucho
+
+L 0x4d52 pone_la_pelota_en_la_mano  Coloca la pelota donde el lanzador la suelta -columna 0x70 y fila 0x7a, u 0x80 si el bit 4 de 0xE100 dice el otro lado- y, una vez de cada 64 por termino medio, levanta el bit 6 de 0xE430 usando el registro R como dado. SUPOSICION: el registro R no es un azar de verdad -depende de cuantas instrucciones se hayan ejecutado-, pero el cartucho lo usa como tal en cinco sitios
+C 0x4d52 (0xE130) := 0x70, la columna de salida
+C 0x4d58 (0xE131) := 0x7a, la fila
+C 0x4d5d el bit 4 dice de que lado se lanza
+C 0x4d61 y entonces la fila es 0x80
+C 0x4d64 (0xE132) := 0
+C 0x4d67 (0xE133) := 0x0f
+C 0x4d69 el registro de refresco del Z80 hace de dado
+C 0x4d6b una de cada 64
+C 0x4d71 el bit 6 de 0xE430
+
+L 0x4d74 pasa_las_posturas_del_brazo  Cada cinco cuadros cambia la postura del lanzador. Son seis, y al llegar a la sexta suelta la pelota
+C 0x4d75 un cuadro menos de esta postura
+C 0x4d78 cinco cuadros para la siguiente
+C 0x4d7c la postura siguiente
+C 0x4d80 la sexta es la de soltar
+C 0x4d86 el bit 6: hay que redibujar
+C 0x4d8a la postura nueva
+
+L 0x4d8c suelta_la_pelota  La sexta postura: dos golpes de sonido y el bit 1 encendido, que es el que pasa el control a la pelota en vuelo
+C 0x4d8d (0xE650) := 0
+C 0x4d91 el primer sonido
+C 0x4d96 (0xE650) := 2
+C 0x4d9a y el segundo
+C 0x4d9d el bit 1: la pelota vuela
+
+L 0x4d9f cierra_la_postura  Marca para redibujar, esconde el sprite poniendole la linea 0xCF y avisa a 0xE220
+C 0x4d9f el bit 6: hay que redibujar
+C 0x4da4 0xCF: el sprite fuera de la pantalla
+C 0x4da9 el bit 6 de 0xE220
+
+L 0x4dac lleva_la_pelota_en_el_aire  La pelota volando hacia el bateador. Suma el paso de 0xE124 al acumulador de 0xE123, y el byte entero que salga es lo que avanza la columna de 0xE130. Por el camino mira si entra en la franja del bate y si llega al plato
+C 0x4dac (0xE030): con algo en marcha ahi, la pelota se queda quieta
+C 0x4db4 el bit 6 de 0xE120: hay que redibujar
+C 0x4db6 HL = 0xE123, el acumulador
+C 0x4dbb con algo acumulado, no hay que sumar todavia
+C 0x4dbe DE = el acumulador
+C 0x4dc2 HL = el paso de 0xE125
+C 0x4dc7 sumados
+C 0x4dcb y de vuelta al acumulador
+
+L 0x4dcf avanza_la_columna  El byte entero del acumulador se gasta y se le suma a la columna de la pelota
+C 0x4dcf lo que hay acumulado
+C 0x4dd1 nada entero: este cuadro no se mueve
+C 0x4dd2 gastado
+C 0x4dd6 HL = 0xE130, la columna de la pelota
+C 0x4dd9 mas lo andado
+C 0x4ddc C = la fila, corrida tres pixeles
+C 0x4de1 desde la columna 0xAB...
+C 0x4de5 ...hasta la 0xB2 es la franja del bate
+C 0x4deb el signo de la fila
+C 0x4df1 y a menos de 0x7c del centro
+C 0x4df5 (0xE380) bit 0: la pelota ha pasado por donde se batea
+
+L 0x4dfe mira_si_llega_al_plato  Pasada la columna 0xCE, la pelota llega: se apunta si fue bola o strike, se manda la pelota de vuelta al receptor con apunta_hacia_un_destino y se lanza el aviso
+C 0x4dfe la columna 0xCE es el plato
+C 0x4e02 HL = 0xE100
+C 0x4e06 se queda el bit 0, el 6 y el 7...
+C 0x4e08 ...y enciende el bit 3: toca la cuenta
+C 0x4e0b (0xE142), los bits bajos de la jugada
+C 0x4e12 A = 2 por defecto
+C 0x4e16 (0xE380) bit 0: si la pelota paso por el bate...
+C 0x4e1e ...vale 1 y si no, 2
+
+L 0x4e20 devuelve_la_pelota  Deja el aviso en 0xE401, coloca la pelota en el plato y le calcula la trayectoria de vuelta al receptor
+C 0x4e20 (0xE401), el aviso de la jugada
+C 0x4e26 (0xE347) := 0xce, la columna del plato
+C 0x4e29 (0xE348) := 0x7a, la fila
+C 0x4e2b HL = 0xE350, la ficha de la pelota devuelta
+C 0x4e2e BC = el destino
+C 0x4e31 DE = la salida
+C 0x4e39 (0xE38A) := 9
+C 0x4e3f el bit 7 de 0xE320
+C 0x4e43 (0xE388) := 1
+C 0x4e46 (0xE402), el bit 0: de quien es el turno
+C 0x4e4e (0xE430) := 2
+C 0x4e54 y el bit 5 de 0xE388
+
+L 0x4e59 sigue_la_pelota_en_vuelo  Sin llegar al plato: baja el contador de 0xE127 y, cada vez que da la vuelta, cambia de postura la pelota y, cada tres vueltas, baja tambien el efecto de 0xE121 y le busca un paso nuevo en tabla_4f97. Asi es como la pelota describe la curva
+C 0x4e59 HL = 0xE127, el contador de posturas
+C 0x4e5d menos lo andado
+C 0x4e61 al dar la vuelta, tres cuadros mas
+C 0x4e64 DE = 0xE121, el efecto que queda
+C 0x4e68 uno menos
+C 0x4e70 diez cuadros para el siguiente
+C 0x4e75 agotado el efecto, ya no se toca mas
+C 0x4e7a tabla_4f97 otra vez, con la velocidad nueva
+C 0x4e84 y el paso de la pelota se rehace
+
+L 0x4e8a mira_el_mando_del_bateador  Con 0xE12A a cero todavia no se ha empezado a batear: en cuanto se pulsa una direccion se guarda el sentido en el bit 0 de 0xE120 y arranca el recorrido del bate
+C 0x4e8a HL = 0xE12A, la postura del bate
+C 0x4e8f empezado ya, por la otra rama
+C 0x4e92 lee el mando del bateador
+C 0x4e96 los bits 1, 2 y 3
+C 0x4e99 sin nada pulsado, no se batea
+C 0x4e9b HL = 0xE120
+C 0x4ea0 el bit 3 elige el sentido del bate
+C 0x4ea6 que se guarda en el bit 0
+C 0x4eab la primera postura del bate
+
+L 0x4eb0 busca_la_postura_del_bate  Recorre tabla_4faa a saltos de cinco -una fila por tipo de golpe- y dentro coge la postura que toque, como mucho la cuarta. El tile que sale se guarda en los tres huecos siguientes de la ficha
+C 0x4eb1 HL = 0x4faa, la tabla de posturas
+C 0x4eb4 B = el tipo de golpe, mas uno
+
+L 0x4eb6 salta_una_fila_de_posturas  Cinco bytes por fila
+C 0x4ebd C = la postura que toca
+C 0x4ebe de la quinta en adelante...
+C 0x4ec2 ...se queda en la cuarta
+C 0x4ec8 B = el tile de la postura
+C 0x4ecb guardado
+C 0x4ecd si el hueco siguiente estaba vacio...
+C 0x4ed1 ...tambien
+C 0x4ed3 y el tercero siempre
+
+L 0x4ed5 sigue_el_bate  Con el bate ya en marcha: mientras se siga pulsando, cada vuelta del contador cambia de postura
+C 0x4ed6 lee el mando otra vez
+C 0x4eda las tres direcciones
+C 0x4edd soltado: solo queda dejar correr el contador
+C 0x4ee0 un cuadro menos
+C 0x4ee4 la postura siguiente
+C 0x4ee9 y su tile
+
+L 0x4eec mueve_el_bate_de_fila  El contador de 0xE12C manda: cada vez que da la vuelta, la fila de la pelota sube o baja un pixel segun el sentido guardado en el bit 0 de 0xE120
+C 0x4eef un cuadro menos
+C 0x4ef2 el contador se recarga con 0xE12D
+C 0x4ef5 B = +1
+C 0x4ef7 (0xE120), el bit 0 es el sentido
+C 0x4efe hacia el otro lado, -1
+
+L 0x4f00 corrige_la_fila  La fila de la pelota, un pixel arriba o abajo
+C 0x4f00 HL = 0xE131, la fila
+C 0x4f04 mas el paso
+
+L 0x4f07 escribe_la_cuenta  Pone en pantalla la cuenta de la jugada. Los tres digitos salen de los nibbles de 0xE361 y 0xE362, y se convierten en tiles con un simple `or 0xf0`, porque las cifras del 0 al 9 son justo los tiles 0xF0 a 0xF9. Detras van tres tiles seguidos, 0xA2, 0xA3 y 0xA4
+C 0x4f07 DE = 0xE362
+C 0x4f0a HL = 0xE700, el hueco de trabajo
+C 0x4f0f el nibble entero, convertido en tile de cifra
+C 0x4f15 ahora el nibble ALTO de 0xE361
+C 0x4f17 bajado a la derecha
+C 0x4f1b y convertido en tile
+C 0x4f20 y el nibble bajo
+C 0x4f25 A = 0xA2, el primero de los tres tiles fijos
+C 0x4f30 DE = VRAM 0x7a6d, donde va la cuenta
+C 0x4f33 seis tiles
+C 0x4f3a (0xE400) := 8
+C 0x4f40 (0xE380) bit 1
+C 0x4f48 de 0xE100 solo sobrevive el bit 4, el lado
+
+# ======================================================================
+# TANDA 7: el cierre de la jugada y el medidor del lanzamiento
+# ======================================================================
+
+L 0x4f74 espera_a_que_pare_la_pelota  Mueve la ficha de 0xE340 -la pelota devuelta- y no da la jugada por cerrada hasta que se para. Cuando para, borra 0xE380, deja de 0xE100 solo los bits 0, 6 y 7 y vuelve a montar el estado de la jugada
+C 0x4f74 HL = 0xE340, la ficha de la pelota devuelta
+C 0x4f78 un cuadro de movimiento
+C 0x4f7c mientras el bit 0 siga puesto, sigue en el aire
+C 0x4f80 (0xE380) := 0
+C 0x4f86 de 0xE100 solo sobreviven los bits 0, 6 y 7
+C 0x4f89 y se rehace el estado de la jugada
+
+L 0x4f8c borra_la_cuenta  Tapa los seis tiles de la cuenta con el 0x4B, que es el hueco del marcador
+C 0x4f8c DE = VRAM 0x7a6d, donde estaba la cuenta
+C 0x4f8f seis tiles
+C 0x4f91 C = 0x4b, el tile de fondo del marcador
+
+D 0x4f97 0x4faf pasos_de_la_pelota  Doce parejas de 16 bits: el paso por cuadro de la pelota para cada velocidad de lanzamiento. Van de 0x0166 a 0x038e, o sea de 1,4 a 3,55 pixeles por cuadro contando el byte bajo como fraccion. Las leen 0x4d24 y 0x4e7a indexando por la velocidad por dos
+F 0x4f97 2
+
+D 0x4faf 0x4fc3 posturas_del_bate  Cuatro filas de cinco tiles: la serie de posturas del bate para cada tipo de golpe. Los recorre 0x4eb0 saltando de cinco en cinco hasta la fila y luego indexando dentro, con tope en la cuarta postura
+F 0x4faf 5
+
+L 0x4fc3 lleva_el_medidor  El medidor que se llena mientras el lanzador prepara. Solo corre en el hueco en que 0xE100 tiene el bit 0 puesto y los bits 1, 2 y 3 a cero, o sea antes de que pase nada. El bit 0 de 0xE360 dice si el medidor sube o baja
+C 0x4fc3 HL = 0xE100, la palabra de estado
+C 0x4fc7 el bit 0: sin lanzamiento no hay medidor
+C 0x4fc9 el bit 1: con la pelota en el aire, tampoco
+C 0x4fcb ni con el brazo armandose
+C 0x4fcd ni con la cuenta en pantalla
+C 0x4fcf HL = 0xE360, el mando del medidor
+C 0x4fd2 su bit 0: puesto quiere decir que baja
+
+L 0x4fd6 sube_el_medidor  Suma uno en BCD al contador de 0xE361 -las unidades dan la vuelta en 0x0A y las decenas en 0xA0- y enciende un tile mas de la barra
+C 0x4fd7 A = el contador de 0xE361, mas uno
+C 0x4fda las unidades...
+C 0x4fdc ...que en BCD dan la vuelta en 0x0A
+C 0x4fe1 se ponen a cero y suben las decenas
+C 0x4fe7 (0xE363), un paso mas
+C 0x4fea y en 0xA0 dan la vuelta las decenas
+C 0x4ff0 (0xE362), la vuelta entera
+
+L 0x4ff2 guarda_el_contador  Deja el contador nuevo y, si llego a 60, hace que a partir de ahora baje
+C 0x4ff2 el contador nuevo
+C 0x4ff3 en 60 se da la vuelta
+C 0x4ffa (0xE364), un paso mas
+C 0x4ffb A = 0x9F, el tile de casilla llena
+
+L 0x4ffd enciende_una_casilla  Recorre las casillas de la barra saltandose las que ya estan llenas y sube una la primera que no lo este
+C 0x4ffe esta llena?
+C 0x5001 la primera que no, un paso mas
+
+L 0x5004 baja_el_medidor  Lo mismo del reves: resta uno en BCD -las unidades dan la vuelta en 0x0F y el contador entero en 0xF9, que vuelve a 0x99- y apaga un tile de la barra
+C 0x5005 A = el contador, menos uno
+C 0x5008 las unidades...
+C 0x500a ...que al bajar dan la vuelta en 0x0F
+C 0x5011 (0xE363), un paso menos
+C 0x5016 se quedan en 9
+C 0x5018 y por debajo de 0xF9...
+C 0x501d ...(0xE362) a cero
+C 0x5020 y el contador vuelve a 0x99
+
+L 0x5022 guarda_el_contador_que_baja  Deja el contador nuevo y, en 0x70, se acabo el plazo
+C 0x5023 0x70: se acabo
+C 0x502a (0xE364), un paso menos
+C 0x502b A = 0x98, la casilla a medias
+
+L 0x502d apaga_una_casilla  Busca la primera casilla que no este a medias y baja la de antes
+C 0x502e a medias?
+C 0x5032 la de antes, un paso menos
+
+L 0x5033 pinta_la_barra  Los ocho tiles de la barra, de 0xE367 a la fila 0x7ae3 de la pantalla, abajo a la izquierda
+C 0x5033 HL = 0xE367, las ocho casillas
+C 0x5036 DE = VRAM 0x7ae3
+C 0x5039 ocho tiles
+
+L 0x503f se_acabo_el_plazo  Con el medidor agotado, la jugada se resuelve sola
+L 0x5042 da_la_vuelta_el_medidor  Llegado a 60, el bit 0 de 0xE360 hace que a partir de ahora baje
+C 0x5045 (0xE360) := 1: de bajada
+
+# ======================================================================
+# TANDA 8: como se monta una jugada nueva
+# ======================================================================
+
+L 0x5a32 monta_la_jugada  Deja el campo listo para la jugada siguiente: esconde los sprites, borra media docena de banderas, copia los dos registros de arranque a 0xE100 y 0xE140, despliega las QUINCE fichas de los jugadores desde 0x5c03, ajusta los dos equipos y pone el medidor a cero
+C 0x5a32 los 32 sprites, fuera de la pantalla
+C 0x5a36 (0xE197) := 0
+C 0x5a39 (0xE388) := 0
+C 0x5a3c (0xE430) := 0
+C 0x5a3f (0xE35F) := 0
+C 0x5a42 (0xE389) := 0
+C 0x5a45 (0xE38B) := 0
+C 0x5a48 (0xE40C) := 0
+C 0x5a4b (0xE011) := 0, la entrada del segundo jugador
+C 0x5a50 (0xE001) := 2, el plazo
+C 0x5a53 (0xE400) := 2, el estado de la jugada
+C 0x5a56 DE = 0xE100, el registro del lanzador
+C 0x5a59 HL = 0x5bd9, los dos registros de arranque
+C 0x5a5c A se queda con lo que HABIA en 0xE100, antes de pisarlo
+C 0x5a5d 21 bytes por registro
+C 0x5a62 y el segundo, a 0xE140
+C 0x5a69 el bit 3 de lo que habia...
+C 0x5a70 ...se conserva: es el unico que sobrevive al reinicio
+
+L 0x5a72 copia_las_cuatro_marcas  Se lleva a 0xE700 los cuatro bytes que estan a una fila de distancia dentro del bloque de 0xE180
+C 0x5a72 HL = 0xE180
+C 0x5a75 DE = 0xE700, el hueco de trabajo
+C 0x5a78 cuatro
+
+L 0x5a7a una_marca  Un byte, y HL sube 32 hasta el siguiente
+C 0x5a7d 32 bytes hasta la ficha siguiente
+
+L 0x5a90 despliega_las_fichas  Las fichas de los jugadores en el campo. En la ROM ocupan 21 bytes seguidos y en RAM 32, con dos huecos que se dejan sin tocar -uno de dos bytes y otro de ocho-, asi que hay que copiarlas en tres tramos. Son QUINCE, o catorce si el bit 3 de 0xE100 esta puesto, y quince por 32 bytes llenan exactamente 0xE180..0xE35F, justo hasta donde empieza el medidor
+C 0x5a90 HL = 0x5c03, la primera ficha
+
+L 0x5a93 despliega_una_ficha  Un byte, dos de hueco, trece bytes, ocho de hueco y siete bytes: 21 leidos y 32 escritos
+C 0x5a94 el primer byte de la ficha
+C 0x5a97 y dos posiciones de hueco
+C 0x5a9a trece bytes seguidos
+C 0x5aa0 ocho posiciones de hueco
+C 0x5aa4 y los siete ultimos
+C 0x5aa8 el byte 31, sin tocar
+
+L 0x5aac reparte_las_tres_marcas  Con las tres marcas guardadas en 0xE701: el bit 5 vale por el bit 1, y quien lo tenga puesto enciende los bits 1 y 6 de su ficha y se lleva un 1 en el byte 23
+C 0x5aac HL = 0xE1A0, la primera de las tres fichas
+C 0x5aaf DE = 0xE701, las marcas
+C 0x5ab2 tres
+
+L 0x5ab4 una_marca_repartida  El bit 5 arrastra al bit 1
+C 0x5ab5 el bit 5...
+C 0x5ab9 ...enciende el 1
+
+L 0x5abb marca_la_ficha  Con el bit 1 puesto, la ficha se enciende y se le pone un 1 en el byte 23
+C 0x5abd A = 0 por defecto
+C 0x5ac1 el bit 1 de la ficha
+C 0x5ac3 y el bit 6
+C 0x5ac5 A = 1 para el byte 23
+
+L 0x5ac7 escribe_el_byte_23  Guarda el 0 o el 1 veintitres bytes mas alla, sin perder A por el camino
+C 0x5ac8 A a la sombra mientras HL avanza
+C 0x5ac9 HL += 23
+C 0x5acd ahi va
+C 0x5ad0 32 bytes hasta la ficha siguiente
+
+L 0x5ad5 remata_el_montaje  Cierra el reparto de fichas, borra los 143 bytes de 0xE030, elige los topes de los dos equipos y coloca lanzador y bateador segun de quien sea el turno
+C 0x5ad8 HL = 0xE030
+C 0x5adb 143 bytes a cero
+C 0x5ae1 los topes que le tocan a cada equipo
+C 0x5ae4 HL = 0xE443, el equipo del primer jugador
+C 0x5ae7 (0xE402), el bit 0 dice de quien es el turno
+C 0x5aed y entonces el del segundo
+
+L 0x5af0 coloca_al_bateador  El bit 0 del codigo de equipo decide de que lado batea: el bit 4 de 0xE140, el bit 3 de 0xE142 y el tile de 0xE144, que es 0x85 por un lado y 0x6D por el otro
+C 0x5af0 el bit 0 del equipo
+C 0x5af5 el bit 4 de 0xE140
+C 0x5af9 o apagado
+C 0x5afd el bit 3 de 0xE142
+C 0x5b05 (0xE144) := 0x85, el tile del bateador
+C 0x5b09 o 0x6D
+
+L 0x5b0b coloca_al_lanzador  Lo mismo para el lanzador, con las semillas de azar de 0xE445 y 0xE446 decidiendo el lado
+C 0x5b0b HL = 0xE445, la primera semilla
+C 0x5b0e (0xE402) otra vez
+C 0x5b14 o la segunda
+C 0x5b17 su bit 0
+C 0x5b1c el bit 4 de 0xE100
+C 0x5b20 o apagado
+
+L 0x5b22 pone_el_bit_3_del_lanzador  El bit 3 de 0xE102, del mismo bit de la semilla
+C 0x5b24 puesto...
+C 0x5b28 ...o quitado
+
+L 0x5b2a mira_si_hay_bateador_de_verdad  Con un solo jugador y el turno del otro lado, 0x7ceb decide si el bateador es de los que pega, y entonces le pone el 0xA4 en 0xE143
+C 0x5b2a (0xE012), el numero de jugadores
+C 0x5b2e con dos jugadores, nada de esto
+C 0x5b30 (0xE402), de quien es el turno
+C 0x5b36 lo decide 0x7ceb
+C 0x5b3d (0xE143) := 0xa4
+
+L 0x5b40 pone_el_medidor_a_cero  Deja el medidor listo: contador en 0x70, las quince casillas de la barra al tile 0x98 -la casilla vacia- y la barra pintada
+C 0x5b40 HL = 0xE360, el mando del medidor
+C 0x5b44 (0xE360) := 0: de subida
+C 0x5b46 (0xE361) := 0x70, el contador
+C 0x5b49 (0xE362) := 0
+C 0x5b4b (0xE363) := 0
+C 0x5b4d (0xE364) := 0x46
+C 0x5b4f quince casillas
+
+L 0x5b51 vacia_una_casilla  El tile 0x98, la casilla vacia
+C 0x5b52 vacia
+
+L 0x5b5a elige_los_topes_de_los_equipos  De la tabla de la liga que toque -0x5b9c la Central y 0x5ba8 la Pacific- saca dos numeros por equipo y los mete en los bytes 12 y 16 de la ficha del lanzador y de la del bateador. Son las caracteristicas del equipo elegido
+C 0x5b5a HL = 0x5b9c, la tabla de la Central
+C 0x5b5d (0xE440), la liga
+C 0x5b63 o la de la Pacific
+C 0x5b68 HL = 0xE140, la ficha del bateador
+C 0x5b6b DE = 0xE100, la del lanzador
+C 0x5b6e (0xE402), el turno
+C 0x5b72 (0xE441), el equipo del primer jugador
+C 0x5b78 el turno otra vez
+C 0x5b7c (0xE442), el del segundo
+C 0x5b7f y al reves para el segundo
+
+L 0x5b80 mete_dos_topes  Con el acarreo se cambian las dos fichas de sitio; luego el equipo indexa la tabla por dos y los dos bytes van a +0x0c y +0x10
+C 0x5b82 sin acarreo, cada ficha en su sitio
+C 0x5b84 con acarreo, cambiadas
+C 0x5b85 solo el numero de equipo
+C 0x5b88 IX = la ficha que toca
+C 0x5b8c el equipo por dos
+C 0x5b91 el primer byte, al hueco 0x0c
+C 0x5b96 y el segundo, al 0x10
+
+D 0x5b9c 0x5ba8 caracteristicas_de_la_central  Seis parejas, una por equipo de la Central, en el orden C D G S T W. 0x5b5a las mete en los huecos 0x0c y 0x10 de las fichas del lanzador y del bateador: son lo unico que distingue a un equipo de otro
+F 0x5b9c 2
+
+D 0x5ba8 0x5bb4 caracteristicas_de_la_pacific  Las otras seis parejas, en el orden B Bu F H L O
+F 0x5ba8 2
+
+L 0x5bb4 reparte_los_corredores  Recorre las tres fichas de 0xE1A0 buscando la primera que NO tenga el bit 1; a las que si lo tienen les baja el bit 6 veintitres bytes mas alla. Si las tres lo tenian, sube el bit 6 en tres sitios de 0xE1F7 hacia atras, de 32 en 32
+C 0x5bb4 HL = 0xE1A0, la primera de las tres
+C 0x5bb7 tres
+
+L 0x5bb9 mira_una_ficha  Sin el bit 1, se para aqui
+C 0x5bb9 el bit 1
+C 0x5bbd 23 bytes mas alla...
+C 0x5bc1 ...el bit 6 se baja
+C 0x5bc3 y nueve mas: 32 hasta la siguiente
+
+L 0x5bc8 y_si_estaban_las_tres  Con las tres puestas, B llega a cero y no hay nada que hacer
+C 0x5bc8 B es lo que quedo del recorrido
+C 0x5bcb HL = 0xE1F7
+
+L 0x5bce sube_el_bit_de_una  El bit 6, y 32 bytes hacia atras
+C 0x5bce el bit 6
+C 0x5bd1 32 bytes hacia atras
+
+D 0x5bd9 0x5bee registro_del_lanzador  Los 21 bytes con los que arranca el registro de 0xE100. El primero es 0x40, o sea que el bit 3 -el que sobrevive al reinicio- entra apagado
+F 0x5bd9 21
+
+D 0x5bee 0x5c03 registro_del_bateador  Los 21 bytes de 0xE140, copiados con el mismo ldir justo detras
+F 0x5bee 21
+
+# LAS FICHAS DE LOS QUINCE JUGADORES DE CAMPO
+#
+# 21 bytes cada una en la ROM y 32 en RAM. 0x5a90 despliega QUINCE -o catorce
+# si el bit 3 de 0xE100 esta puesto-, y quince por 32 llenan exactamente
+# 0xE180..0xE35F, justo hasta el medidor: la cuenta cuadra por arriba.
+#
+# Por abajo NO cuadra: quince fichas de 21 bytes son 315, y de 0x5c03 a 0x5d3b
+# solo hay 312. Los TRES BYTES QUE FALTAN son los tres primeros de la rutina
+# de 0x5d3b -0x21 0x00 0xE1, que es `ld hl,0e100h`-, y acaban en los huecos
+# 28, 29 y 30 de la ficha numero quince. Es una lectura tres bytes mas alla de
+# donde acaba la tabla; que sea a proposito para ahorrar bytes o un descuido
+# que no se nota porque esos huecos no se usan, no se puede decidir mirando
+# el binario. SUPOSICION: se ha dado por buena la cuenta de quince porque es
+# la que llena exactamente 0xE180..0xE35F, no porque la tabla la respete.
+D 0x5c03 0x5d3b fichas_de_los_jugadores  Las quince fichas de los jugadores de campo, 21 bytes cada una, que 0x5a90 despliega a 32 bytes en 0xE180. Ver arriba lo de los tres bytes que se salen
+F 0x5c03 21
+
+# ======================================================================
+# TANDA 9: como se dibujan los jugadores
+# ======================================================================
+#
+# Un jugador de este cartucho son TRES SPRITES DE 16x16 SUPERPUESTOS, uno por
+# color, y el cartucho NO guarda todas las posturas en VRAM: cada vez que la
+# postura cambia sube los tres patrones enteros -32 bytes cada uno- desde la
+# ROM, descomprimiendolos con el mismo interprete de guiones que dibuja las
+# pantallas. Por eso 0x5dce llama al interprete y ademas escribe atributos de
+# sprite: lo primero es el dibujo y lo segundo, donde va.
+#
+# La tabla de 0x5048 lleva un puntero por postura, y cada uno apunta a un
+# registro de CUATRO palabras: los tres guiones -una capa cada uno- y un
+# puntero a seis bytes de desplazamiento, una pareja (fila, columna) con signo
+# por capa. Hay 22 posturas distintas, y estan dibujadas desde la ROM en
+# docs/imagenes/posturas.png.
+#
+# UN DETALLE DE AHORRO: en 21 de las 22 posturas el puntero a los
+# desplazamientos apunta AL BYTE 0x00 QUE CIERRA EL TERCER GUION, o sea que
+# ese byte hace dos cosas a la vez: cerrar el guion y ser el desplazamiento en
+# fila de la primera capa. La unica que no lo hace es la de 0x50ec, y es
+# porque su primer desplazamiento vale 1 y no 0.
+
+L 0x5d3b dibuja_lo_que_se_ha_movido  El repaso de dibujo de cada cuadro. Primero el lanzador y el bateador -0xE100 y 0xE140-, si tienen el bit 6 puesto; luego la pelota devuelta; luego el corrimiento de la cola de sombras; luego los quince jugadores de campo; y por ultimo la pelota
+C 0x5d3b HL = 0xE100, el lanzador
+C 0x5d3e dos: el lanzador y el bateador
+
+L 0x5d40 dibuja_uno_de_los_dos  Solo si tiene el bit 6, o sea si se ha movido
+C 0x5d40 el bit 6: se ha movido este cuadro
+C 0x5d45 IX = su ficha
+C 0x5d48 y se dibuja
+
+L 0x5d4c y_ahora_el_bateador  La segunda vuelta va por 0xE140
+C 0x5d4c HL = 0xE140, el bateador
+C 0x5d51 (0xE340), la ficha de la pelota devuelta
+C 0x5d54 su bit 6
+C 0x5d58 HL = 0xE134, el atributo del sprite de la pelota
+C 0x5d5b BC = (0xE347), donde esta
+
+L 0x5d62 corre_la_cola_de_sombras  Corre en cadena cinco bytes que estan a 0x20 de distancia dentro del bloque de 0xE200: 0xE245, 0xE265, 0xE2A5, 0xE2C5 y de vuelta, y aparte 0xE285 con 0xE2E5. SUPOSICION: que sea el rastro de lo que se mueve es lo que sugiere el corrimiento en cadena, pero no se ha medido en el emulador
+C 0x5d62 HL = 0xE245, el primero de la cadena
+C 0x5d67 L = 0x65: 0xE265
+C 0x5d6b L = 0xA5: 0xE2A5
+C 0x5d6f L = 0xC5: 0xE2C5
+C 0x5d74 y el primero se queda el ultimo
+C 0x5d75 L = 0x85: 0xE285
+C 0x5d78 L = 0xE5: 0xE2E5
+C 0x5d7e cambiados entre si
+
+L 0x5d7f dibuja_a_los_quince  Los quince jugadores de campo, de 32 en 32 bytes. Los de la vuelta 2 a la 9 llevan el dibujo completo; el resto solo el sprite
+C 0x5d7f HL = 0xE180, la primera ficha
+C 0x5d82 quince
+
+L 0x5d84 dibuja_a_uno_de_campo  Decide con que rutina se dibuja segun el numero de ficha
+C 0x5d86 IX = la ficha
+C 0x5d8a de la decima en adelante, solo el sprite
+C 0x5d8e la primera tambien
+C 0x5d91 las demas, el dibujo entero
+
+L 0x5d96 solo_el_sprite  Las fichas que no llevan cuerpo de tiles
+L 0x5d99 la_ficha_siguiente  32 bytes mas alla
+C 0x5d9b 32 bytes hasta la siguiente
+C 0x5da0 HL = 0xE120, la ficha de la pelota
+C 0x5da3 sin el bit 6 no hay nada que redibujar
+C 0x5da6 y se baja
+C 0x5da8 HL = 0xE130, donde esta la pelota
+C 0x5dab DE = VRAM 0x7b00, el primer sprite de la tabla
+C 0x5db1 HL = 0xE134, el atributo del sprite de la sombra
+C 0x5db4 BC = (0xE130), la posicion de la pelota
+
+L 0x5db8 monta_el_atributo_de_la_sombra  Escribe los cuatro bytes del sprite de la sombra: la fila ocho pixeles mas abajo que la pelota, la misma columna, el patron 0 y el color 1
+C 0x5db8 ocho pixeles mas abajo
+C 0x5dbe la misma columna
+C 0x5dc0 el patron 0
+C 0x5dc3 el color 1
+C 0x5dc6 DE = VRAM 0x7b7c, el ultimo sprite de la tabla
+
+L 0x5dc9 escribe_cuatro_bytes_de_sprite  Los cuatro bytes de un atributo de sprite
+C 0x5dc9 cuatro bytes
+
+L 0x5dce dibuja_un_jugador_grande  Sube a VRAM las TRES CAPAS de la postura del jugador y monta sus tres sprites. La postura es el byte 2 de la ficha; por dos entra en tabla_punteros_5048, que da un registro de cuatro palabras: tres guiones de 32 bytes -uno por capa- y el puntero a los desplazamientos. Los tres patrones van a 0x1880 y siguientes, de 32 en 32, que es justo lo que separa a dos patrones de sprite de 16x16
+C 0x5dce DE = el patron de sprite en VRAM, de los bytes 5 y 6
+C 0x5dd4 el byte 2, que es la postura
+C 0x5dd7 por dos: la tabla lleva punteros
+C 0x5dd8 HL = el registro de esta postura
+C 0x5ddb tres capas
+
+L 0x5ddd sube_una_capa  Cada capa tiene su propio guion, y son 32 bytes: un patron de sprite de 16x16 entero
+C 0x5ddf HL = el guion de esta capa
+C 0x5de2 arma la escritura en el patron
+C 0x5de5 y se descomprime
+C 0x5de8 32 bytes: el patron siguiente
+C 0x5dee y el puntero al guion siguiente
+
+L 0x5df3 monta_los_tres_sprites  Con los tres patrones ya en VRAM, los tres atributos. De la tabla salen las parejas (fila, columna) con signo de cada capa, y a ellas se les suma la posicion del jugador, que esta en los bytes 3 y 4 de la ficha. La fila 0xCF -la de esconder- se respeta tal cual, sin sumarle nada
+C 0x5df3 el bit 6 se baja: ya esta dibujado
+C 0x5df7 DE = los desplazamientos, pegados al final del tercer guion
+C 0x5dfd HL = la ficha + 9, donde se guardan
+C 0x5e02 tres sprites
+C 0x5e05 B = el desplazamiento en fila
+C 0x5e08 C = el desplazamiento en columna
+
+L 0x5e0c monta_un_sprite  Fila, columna, y dos bytes que se saltan
+C 0x5e0d la fila del sprite
+C 0x5e0e 0xCF quiere decir escondido: no se toca
+C 0x5e12 y si no, se corre
+C 0x5e17 la columna, corrida tambien
+C 0x5e1b el patron y el color, sin tocar
+
+L 0x5e20 vuelca_los_sprites  Los doce bytes de los tres atributos, del bloque de la ficha a la tabla de sprites, con outi
+C 0x5e20 DE = el sitio en la tabla de sprites, de los bytes 7 y 8
+C 0x5e29 arma la escritura ahi
+C 0x5e2f HL = la ficha + 9
+C 0x5e30 tres atributos
+
+L 0x5e32 saca_un_atributo  Recupera el puerto y suelta los cuatro bytes
+L 0x5e35 cuatro_bytes_de_golpe  outi cuatro veces: el modo mas rapido que hay de escribir en el VDP
+C 0x5e35 cuatro bytes
+C 0x5e37 al puerto de datos, sin pasar por A
+C 0x5e3b y el atributo siguiente
+
+L 0x5e3f dibuja_solo_si_se_ha_movido  La puerta del dibujo pequeno: sin el bit 6, nada
+C 0x5e3f el bit 6 de la ficha
+
+L 0x5e44 dibuja_un_jugador_pequeno  Los jugadores de campo son de UNA sola capa: un patron de 32 bytes y un sprite. Aqui la tabla de 0x5048 se usa de otra manera -lo que devuelve es el guion directamente, no un registro de cuatro palabras-, y el patron va a la direccion de los bytes 0x1a y 0x1b de la ficha
+C 0x5e44 DE = el patron de sprite en VRAM, de los bytes 0x1a y 0x1b
+C 0x5e4a el byte 0x0b, la postura
+C 0x5e4d por dos
+C 0x5e51 el bit 6 otra vez
+C 0x5e57 arma la escritura en el patron
+C 0x5e5a y se descomprime
+C 0x5e5d el bit 6, bajado
+
+L 0x5e61 vuelca_su_sprite  Un solo atributo de sprite, el de la ficha + 7
+C 0x5e61 DE = el sitio en la tabla de sprites
+C 0x5e6a HL = la ficha + 7
+C 0x5e6e arma la escritura
+C 0x5e71 un solo atributo
+
+L 0x5e75 busca_el_guion_del_jugador  Entra en tabla_punteros_5048 con el indice ya multiplicado por dos
+C 0x5e75 HL = 0x5048, la tabla de punteros
+
+L 0x5e7b lee_un_puntero  El puntero de 16 bits al que se apunta, en little-endian
+C 0x5e7b el byte bajo
+C 0x5e7d y el alto
+
+# ======================================================================
+# TANDA 10: los corredores y las bases
+# ======================================================================
+#
+# Las CUATRO bases son cuatro fichas de 32 bytes seguidas: 0xE180, 0xE1A0,
+# 0xE1C0 y 0xE1E0. El bit 1 de cada una dice si hay corredor, el bit 0 si se
+# esta moviendo, el bit 4 en que sentido corre y el bit 5 si ya no cuenta.
+# 0xE380 es la palabra de estado de la carrera, con el bit 1 puesto mientras
+# haya alguien corriendo.
+
+L 0x5e80 lleva_a_los_corredores  El cuadro de las bases. Segun los bits de 0xE380 se manda a los corredores atras (bit 4), se les deja seguir (bit 1) o no se toca nada (bit 3)
+C 0x5e80 HL = 0xE380, la palabra de la carrera
+C 0x5e83 el bit 4: hay que mandarlos atras
+C 0x5e87 el bit 1: hay carrera en marcha
+C 0x5e8b el bit 3: la jugada esta cerrada
+
+L 0x5e90 manda_atras_a_los_corredores  Con el bit 4 puesto, a los corredores que estan en base y no van hacia delante se les enciende el bit 2, que es la orden de volver
+C 0x5e90 el bit 4, gastado
+C 0x5e92 HL = 0xE180, la primera base
+C 0x5e95 las cuatro
+
+L 0x5e97 manda_atras_a_uno  Solo a los que tienen corredor; el bit 4 marca a los que ya van hacia delante y a esos no se les toca
+C 0x5e97 el bit 1: hay corredor?
+C 0x5e9b el bit 4: ya va hacia delante
+C 0x5e9f el bit 2: orden de volver
+
+L 0x5ea1 la_base_siguiente  32 bytes mas alla
+L 0x5ea7 repasa_las_cuatro_bases  Recorre las cuatro bases. La que no tenga corredor -ni el bit 5 ni el bit 1- se esconde: se le guarda la fila, se le pone la 0xCF y se vuelca el atributo, con lo que su sprite desaparece de la pantalla
+C 0x5ea7 HL = 0xE180, la primera base
+C 0x5eaa las cuatro
+
+L 0x5eac esconde_o_marca_una_base  Sin corredor, el sprite fuera; con corredor, el bit 6 para que se redibuje
+C 0x5ead el bit 5: la base ya no cuenta
+C 0x5eb1 el bit 1: hay corredor
+C 0x5eb6 HL += 7: la fila del sprite
+C 0x5ebb se guarda la que habia...
+C 0x5ebc ...y se pone la 0xCF, la de esconder
+C 0x5ebf DE = donde va el atributo en VRAM
+C 0x5ec4 cuatro bytes
+C 0x5ecd y la fila de verdad, de vuelta
+
+L 0x5ed1 marca_la_base  Con corredor, solo hay que redibujarla
+C 0x5ed1 el bit 6
+
+L 0x5ed3 y_la_base_siguiente  32 bytes mas alla
+C 0x5ed3 la base siguiente
+C 0x5ed9 lee el mando del que corre
+C 0x5ede los bits 4 y 5, los dos botones
+C 0x5ee0 HL = 0xE380
+
+L 0x5eeb recuerda_que_se_pulso  El bit 7 de 0xE380 recuerda que el boton seguia pulsado del cuadro anterior, para no contarlo dos veces
+C 0x5ee5 ya estaba puesto?
+C 0x5ee9 entonces la lectura no vale
+C 0x5eeb y queda puesto
+
+L 0x5eef nadie_pulsa  El bit 7 se cae
+C 0x5eef el bit 7, a cero
+
+L 0x5ef1 mueve_las_cuatro_bases  Le da un cuadro a cada base con su numero: la primera con 0, la segunda con 8, la tercera con 1 y la cuarta con 4. IX recorre en paralelo la tabla de 0x61d2, cuatro bytes por base
+C 0x5ef1 IX = 0x61d2, los datos de las bases
+C 0x5ef5 la primera base va con el 0
+C 0x5ef7 HL = 0xE180
+C 0x5f00 HL = 0xE1A0, la segunda
+C 0x5f03 que va con el 8
+C 0x5f0a HL = 0xE1C0, la tercera
+C 0x5f0d con el 1
+C 0x5f14 HL = 0xE1E0, la cuarta
+C 0x5f17 con el 4, y sin adelantar IX
+C 0x5f1d (0xE388), el bit 7
+C 0x5f26 enciende el bit 0 de 0xE389
+
+L 0x5f28 recarga_el_contador_de_carrera  El contador de 0xE033, que al llegar a 1 vuelve a 2
+C 0x5f28 (0xE033)
+C 0x5f30 vuelve a 2
+
+L 0x5f33 mira_si_queda_alguien_corriendo  Recorre las cuatro bases buscando una con el bit 0 puesto. Si no hay ninguna, baja el bit 1 de 0xE380 y la carrera se acaba
+C 0x5f33 HL = 0xE180
+C 0x5f36 las cuatro
+C 0x5f38 DE = 0xE380
+
+L 0x5f3b mira_una_base  El bit 0: se esta moviendo
+C 0x5f3b el bit 0
+C 0x5f3f la base siguiente
+C 0x5f45 nadie corre: el bit 1 se cae
+
+L 0x5f48 sigue_habiendo_carrera  Con alguien corriendo, el bit 1 se mantiene y cada ocho cuadros suena el paso
+C 0x5f49 el bit 1 de 0xE380
+C 0x5f4b (0xE401), el aviso de la jugada
+C 0x5f4e con el bit 6 puesto, sin sonido
+C 0x5f51 el contador de cuadros
+C 0x5f54 uno de cada ocho
+C 0x5f57 A = 3, el sonido del paso
+
+L 0x5f5c mueve_una_base_y_avanza  Le da su cuadro a la base y adelanta IX cuatro bytes, hasta los datos de la siguiente
+C 0x5f5c el cuadro de esta base
+C 0x5f62 IX += 4: los datos de la base siguiente
+
+L 0x5f6a lleva_una_base  El cuadro de una base. Sin corredor no hay nada que hacer; con el bit 2 puesto se le manda ya; y si no, se mira lo que se acaba de pulsar: los dos botones deciden si el corredor arranca, y el numero de la base -que viene en C- tiene que cuadrar con la direccion pulsada
+C 0x5f6a el bit 1: hay corredor?
+C 0x5f6d el bit 2: la orden ya esta dada
+C 0x5f71 el bit 4: va hacia delante
+C 0x5f75 (0xE389), su bit 0
+C 0x5f7b (0xE388), su bit 7
+C 0x5f81 B = 0x12: la orden se la da la maquina
+
+L 0x5f83 mira_si_le_toca_a_esta_base  Los botones tienen que estar pulsados y la direccion tiene que ser la de esta base
+C 0x5f84 los dos botones
+C 0x5f86 sin boton, no arranca
+C 0x5f88 C = el numero de esta base
+C 0x5f8c la direccion pulsada
+C 0x5f8f el 2 es un caso aparte
+C 0x5f94 que solo vale para la cuarta base
+
+L 0x5f9a compara_la_direccion  La direccion pulsada tiene que ser justo la de esta base
+C 0x5f9a la de esta base?
+
+L 0x5f9d decide_hacia_donde  Con la orden dada: si el corredor va hacia delante se avisa a la base de detras, y si va hacia atras se comprueba que la de delante este libre antes de dejarle salir
+C 0x5f9d DE = 32, lo que hay de una base a otra
+C 0x5fa0 el bit 4: hacia delante
+C 0x5fa4 el bit 5: ya no cuenta
+C 0x5fa8 el bit 3
+C 0x5fae la base de detras...
+C 0x5fb0 ...tambien se pone en marcha
+
+L 0x5fb3 mira_si_puede_salir  Con la pelota en juego y sin el aviso de 0xE388, la base a la que va tiene que estar libre
+C 0x5fb6 la pelota esta donde tiene que estar
+C 0x5fb8 (0xE388), su bit 7
+C 0x5fbf la ficha de la base de al lado
+C 0x5fc2 su bit 6
+
+L 0x5fc7 arranca_hacia_delante  Con el aviso de 0xE401 sin el bit 6, el corredor sale y a la base de al lado se le baja el bit 7
+C 0x5fc7 (0xE401), el aviso de la jugada
+C 0x5fca el bit 6: la jugada ya esta resuelta
+C 0x5fd2 el bit 7 de la de al lado
+
+L 0x5fd7 arranca_hacia_atras  Volver solo se puede si la base de la que se viene no esta ocupada por otro que ya vaya en marcha
+C 0x5fd7 el bit 7
+C 0x5fdc 23 bytes mas alla
+C 0x5fdf su bit 5
+C 0x5fe5 la base de al lado
+C 0x5fe6 su bit 1: hay corredor
+C 0x5fea su bit 0: se esta moviendo
+C 0x5fee y su bit 4: hacia donde
+
+L 0x5ff2 no_puede_volver  La base de al lado esta ocupada
+L 0x5ff5 si_puede_volver  Camino libre
+L 0x5ff6 no_arranca  Sin orden valida, solo queda dejar correr lo que ya estuviera en marcha
+
+L 0x5ff9 pone_en_marcha_al_corredor  Baja las ordenes ya gastadas, le da la vuelta al bit 4 -que es el sentido-, y prepara la postura y la ficha de movimiento con los datos de la tabla de 0x61bc que le toquen a esa direccion
+C 0x5ff9 el bit 2, gastado
+C 0x5ffb y el bit 5
+C 0x5ffe el bit 4 cambia de valor: se da la vuelta
+C 0x600a HL += 11: la postura del corredor
+C 0x6010 el bit 6 fuera
+C 0x6012 el bit 5 y el 3 puestos
+C 0x6017 salvo que fuera hacia el otro lado
+C 0x601b y entonces el bit 3 se cae
+
+L 0x601d guarda_la_postura  La postura nueva del corredor
+C 0x6022 la ficha de al lado
+C 0x6026 su bit 3, del mismo sentido
+C 0x602c o apagado
+
+L 0x602e busca_el_destino  Recorre la tabla de 0x61bc de cuatro en cuatro hasta dar con la entrada del bit de direccion que este puesto
+C 0x602e HL = 0x61bc, los destinos
+C 0x6031 cinco entradas
+C 0x6033 A = la direccion
+
+L 0x6034 una_entrada_de_destino  Cuatro bytes por entrada, y el bit que salga por el acarreo manda
+C 0x6038 el bit siguiente
+C 0x6039 puesto: es esta
+
+L 0x603d saca_el_destino  De la entrada salen dos bytes -la esquina a la que va- y el sentido elige si son los dos primeros o los dos ultimos
+C 0x6042 el bit 4, el sentido
+C 0x6046 hacia el otro lado, los otros dos bytes
+C 0x6048 B = la fila del destino
+C 0x604a C = la columna
+C 0x604c y se le calcula la trayectoria
+
+L 0x604f un_cuadro_del_corredor  Le da un cuadro de movimiento y, cada cuatro cuadros, le da la vuelta al bit 0 de su postura: es el paso
+C 0x6052 un cuadro de movimiento
+C 0x6057 el contador de cuadros
+C 0x605a uno de cada cuatro
+C 0x6060 el bit 0: solo si sigue en marcha
+C 0x6064 HL += 11: la postura
+C 0x6069 su bit 0 sale...
+C 0x606c ...y vuelve a entrar cambiado
+
+L 0x606e mira_si_ha_llegado  Con el bit 0 todavia puesto, sigue corriendo
+C 0x606f el bit 0
+C 0x6072 el bit 4: iba hacia delante
+C 0x6077 la ficha de al lado
+C 0x607a su bit 7
+C 0x607c que se baja
+C 0x607e y el bit 5 se sube
+C 0x6082 mira si hay que avisar
+C 0x6087 y si la jugada sigue
+
+L 0x608b avisa_de_la_llegada  El bit 2 de 0xE389: el corredor ha llegado
+C 0x608c HL = 0xE389
+C 0x608f el bit 2
+
+L 0x6092 marca_la_base_alcanzada  Volviendo hacia atras, se le pone el bit 1 a la ficha de 23 bytes mas alla
+C 0x6092 el bit 4: hacia donde iba
+C 0x6097 23 bytes mas alla
+C 0x609a su bit 1
+
+L 0x609d compara_con_la_base_en_juego  Los bytes 0x1c y 0x1d de la ficha dicen a que base se llega segun el sentido; si coincide con la que la pelota tiene marcada en 0xE35F y ademas 0xE38A dice algo, el corredor esta out
+C 0x609e IY = la ficha
+C 0x60a0 B = el byte 0x1c, la base hacia delante
+C 0x60a3 el bit 4, el sentido
+C 0x60a7 o el 0x1d, la de atras
+C 0x60aa (0xE35F), la base que la pelota tiene tomada
+C 0x60ad la misma?
+C 0x60b0 (0xE38A), el aviso de la pelota
+
+L 0x60b6 mira_el_hueco_de_esa_base  Con B haciendo de indice, recorre 0xE200 de 32 en 32 y mira el bit 0 de la ficha que salga
+C 0x60b7 HL = 0xE200
+
+L 0x60bb salta_una_ficha  32 bytes por ficha
+C 0x60c0 su bit 0
+C 0x60c5 (0xE340), la pelota devuelta
+C 0x60cb el bit 5 del byte 0x20 de la ficha
+C 0x60d2 de la ficha solo sobrevive el bit 7
+C 0x60d7 (0xE401) := 4: el corredor esta eliminado
+
+L 0x60db anota_la_llegada  Llegando hacia delante, se marca la ficha de al lado y, si nadie mas la reclama, se apunta la carrera en 0xE40C o en 0xE40E segun de quien sea el turno
+C 0x60db el bit 4: hacia delante
+C 0x60df la ficha de al lado
+C 0x60e2 su bit 5
+C 0x60e4 y su bit 1
+C 0x60e8 el bit 7 de esta
+C 0x60ed el bit 5 del byte 0x20, apagado
+C 0x60f1 (0xE388), su bit 7
+C 0x60fa (0xE40E), una carrera mas
+C 0x6100 (0xE40C), una carrera mas
+
+# ======================================================================
+# TANDA 11: el cierre de la carrera y las tablas de las bases
+# ======================================================================
+
+L 0x6107 recoge_el_corredor  Vuelve por la ficha que se dejo en la pila
+L 0x6108 apaga_al_corredor  De la ficha solo sobreviven los bits 7, 5 y 3, le coloca el sprite en la esquina que le toque y, si tenia el bit 5, arrastra en cadena a la de detras
+C 0x6108 la ficha entera...
+C 0x6109 ...reducida a los bits 7, 5 y 3
+C 0x610d le pone el sprite en su esquina
+C 0x6111 el bit 5: hay que arrastrar a la de detras
+
+L 0x6114 arrastra_la_de_detras  Se mete en la ficha de detras, la apaga igual, retrocede IX cuatro bytes y, si esa tambien tenia el bit 5, se llama a si misma. Es una cadena que puede recorrer las cuatro bases de una vez
+C 0x6117 DE = 32, lo que va de una ficha a otra
+C 0x611b la de detras
+C 0x611e reducida a los bits 7, 5 y 3
+C 0x6121 IX, cuatro bytes atras: los datos de esa base
+C 0x6129 y si esa tambien lo tenia, otra vuelta
+C 0x612e le coloca el sprite
+
+L 0x6135 coloca_el_sprite_de_la_base  Deja al corredor parado en su base: sin el bit 3 va a la esquina de partida (indice 0) y con el a la de llegada (indice 2), y de paso limpia las ordenes y avisa a la ficha de al lado
+C 0x6135 A = 0, el indice de la esquina de partida
+C 0x6136 el bit 3
+C 0x613b el bit 7, guardado para luego
+C 0x613e la ficha de al lado
+C 0x6144 su bit 1, si el 7 estaba a cero
+C 0x6146 el bit 4, fuera
+C 0x6148 y el bit 3
+C 0x614e 23 bytes mas alla: el bit 6 puesto...
+C 0x6150 ...y el 5 quitado
+C 0x6153 A = 2, el indice de la esquina de llegada
+
+L 0x6155 escribe_la_esquina  De los datos de la base -los que apunta IX- saca la pareja fila/columna que toque y la mete en los bytes 7 y 8 de la ficha, que es donde el dibujo mira. La pareja 00 00 quiere decir "no la toques"
+C 0x6157 IY = la ficha
+C 0x615c HL = los datos de la base, mas el indice
+C 0x6160 la pareja 00 00 no vale
+C 0x6163 la fila, al byte 7
+C 0x6168 y la columna, al byte 8
+
+L 0x616d decide_si_el_corredor_arranca_solo  Al corredor que va hacia delante, la maquina puede mandarlo sola: hay cinco cosas que tienen que dar permiso -que no haya llegado nadie, que la pelota este en juego, que la jugada no este resuelta, que 0xE40A no valga 2 y que 0xE388 no lo prohiba-
+C 0x616d el bit 4: hacia delante
+C 0x6171 (0xE389), el bit 2: alguien acaba de llegar
+C 0x6178 la pelota en juego
+C 0x617d (0xE401), el bit 6: la jugada resuelta
+C 0x6184 (0xE40A) valiendo 2 lo prohibe
+C 0x618b (0xE388), su bit 7
+C 0x6191 y el contador de 0xE033
+
+L 0x6196 arranca_solo  Con el bit 7 de la ficha de al lado ya puesto no se repite; si no, se pone y el corredor sale hacia el destino de la tabla de 0x61e0
+C 0x6197 la ficha de al lado
+C 0x619b su bit 7: ya se conto
+C 0x61a0 y queda puesto
+C 0x61a6 A = el numero de la base
+C 0x61a7 HL = 0x61de, los destinos de vuelta
+C 0x61aa cinco entradas
+
+L 0x61ac una_entrada_de_vuelta  Dos bytes por entrada, y el bit que salga por el acarreo manda
+C 0x61ae el bit siguiente
+C 0x61b3 B = la fila del destino
+C 0x61b5 C = la columna
+C 0x61b7 y se le calcula la trayectoria
+
+L 0x61ba y_si_esta_en_marcha  Solo se le da cuadro al que tenga el bit 0
+C 0x61ba el bit 0
+L 0x61bc no_esta_en_marcha  Y si no, nada
+C 0x61bd un cuadro de movimiento
+
+# Los tres tramos de esta tabla los leen tres rutinas distintas y con pasos
+# distintos, y los dos primeros se meten un poco en el siguiente: la quinta
+# entrada de 0x61c0 empieza en 0x61d0 y ocupa cuatro bytes, y la cuarta base
+# se queda mirando 0x61de. Es la misma clase de ahorro que hay por todo el
+# cartucho, asi que los cortes de aqui abajo son por USO, no por propiedad.
+D 0x61c0 0x61d2 destinos_de_las_bases  Cinco entradas de cuatro bytes -dos parejas fila/columna, una por sentido- que 0x602e recorre buscando el bit de direccion que este puesto. Es a donde sale corriendo el que arranca
+F 0x61c0 4
+
+D 0x61d2 0x61e0 esquinas_de_las_bases  Cuatro entradas de cuatro bytes, una por base, que 0x5ef1 recorre con IX: la pareja de partida y la de llegada donde 0x6155 aparca el sprite del corredor cuando se para. La pareja 00 00 quiere decir que no se toca
+F 0x61d2 4
+
+D 0x61e0 0x61ea destinos_de_vuelta  Cinco parejas fila/columna que lee 0x61a7: a donde manda la maquina al corredor cuando decide que salga solo
+F 0x61e0 2
+
+L 0x61ea la_ficha_de_al_lado  HL += 23, que es donde vive la pareja de esta ficha. Un `jp` a avanza_veintitres, para poder llamarlo con `call`
+L 0x61ed calcula_la_trayectoria  Saca de la ficha su posicion de ahora -bytes 7 y 8- y le calcula la trayectoria hasta (B,C) sobre el hueco que empieza 15 bytes mas alla
+C 0x61ee HL += 7: la fila y la columna de ahora
+C 0x61f3 D = la fila
+C 0x61f5 E = la columna
+C 0x61f6 HL += 8 mas: el hueco de la trayectoria
+C 0x61fb y ahi se calcula
+
+L 0x6200 la_pelota_esta_en_juego  Devuelve el cero puesto si 0xE030 esta a cero, que es la pregunta que se hace media docena de sitios
+C 0x6200 (0xE030)
+
+L 0x6205 mira_el_contador_de_carrera  Lo mismo con 0xE033
+C 0x6205 (0xE033)
+
+# ======================================================================
+# TANDA 12: la pelota bateada, y la aritmetica que la mueve
+# ======================================================================
+#
+# LA CALCULADORA DEL CARTUCHO. Todo el vuelo de la pelota bateada se calcula
+# en cuatro bytes de RAM, de 0xE060 a 0xE063, con dos rutinas que son una
+# multiplicacion y una division hechas a mano:
+#
+#     0x6539  multiplica: 16 vueltas de desplazar y sumar. Entra un valor de
+#             16 bits en 0xE060/0xE061 y un multiplicador en 0xE063, y sale
+#             el producto de 24 bits repartido en 0xE060..0xE062.
+#     0x6519  divide: 8 vueltas de desplazar y restar. Entra el dividendo en
+#             0xE061/0xE062 y el divisor en 0xE063, y salen el cociente en
+#             0xE062 y el resto en 0xE060.
+#
+# 0xE037 es el ANGULO al que sale la pelota, de 0 a 31: media vuelta partida
+# en 32, con el bit 4 diciendo de que lado. 0xE066 lleva la componente que
+# sale de ese angulo y 0xE0A1 la altura, en 16 bits y con los bytes al reves,
+# que es por lo que aparecen tantos `ld a,l / ld l,h / ld h,a`.
+
+L 0x620a lleva_la_pelota_bateada  El cuadro de la pelota bateada. Solo corre con 0xE039 puesto y la pelota en juego. Cada bote -que es cuando 0xE03B llega a cero- recalcula el rebote: le da la vuelta a 0xE038, saca dos bits del angulo de 0xE037 para decidir el lado en 0xE056, y vuelve a calcular la trayectoria
+C 0x620a (0xE039): sin esto no hay pelota bateada
+C 0x620f la pelota tiene que estar en juego
+C 0x6214 HL = 0xE03B, lo que queda para el bote
+C 0x6219 todavia no bota: solo hay que moverla
+C 0x621c gastado
+C 0x621d (0xE031) := 0
+C 0x6220 L = 0x38: 0xE038
+C 0x6223 que cambia de valor en cada bote
+C 0x6225 (0xE037), el angulo de salida
+C 0x6228 sus bits 4 y 5, bajados a la derecha
+C 0x622e el de mas peso, al acarreo
+C 0x6235 (0xE056): de que lado sale el rebote
+
+L 0x623b calcula_el_vuelo  Con la altura de 0xE0A1 y las dos componentes de 0xE0A3 y 0xE0A5, dos multiplicaciones dan las dos coordenadas del punto de caida, que se guardan en 0xE0A7 y 0xE0A9. Luego divide entre 6, mide, y de ahi salen los desplazamientos que se le suman a la posicion de la pelota
+C 0x623b (0xE0A1), la altura
+C 0x6241 (0xE0A3), la primera componente
+C 0x6247 multiplicadas
+C 0x624d el resultado, a 0xE0A7
+C 0x6250 la altura otra vez
+C 0x6256 (0xE0A5), la segunda componente
+C 0x6262 y el resultado a 0xE0A9
+C 0x6268 (0xE034) := 0
+C 0x626e divisor 0x0600: entre seis
+C 0x6273 dividido
+C 0x6279 el cociente, a 0xE063
+C 0x627c (0xE0A7), la primera coordenada
+C 0x6286 por el cociente
+C 0x628c partido por 128
+C 0x6293 el resultado, menos su cuarta parte
+C 0x6299 y multiplicado por lo que valga la componente
+C 0x629c DE = 0xE0B1 y HL = 0xE0B0, las dos coordenadas
+C 0x62a2 (0xE056), el lado del rebote
+C 0x62a8 con el lado cambiado, las dos coordenadas se cambian
+C 0x62a9 (0xE037), el nibble alto del angulo
+
+L 0x62b4 mira_el_otro_lado  Con 0xE056 puesto manda 0xE038 en vez del angulo
+C 0x62b4 (0xE038)
+
+L 0x62bb cambia_el_signo  El desplazamiento va hacia el otro lado
+L 0x62bd suma_la_primera_coordenada  Se le suma a la coordenada de ahora y se guarda ocho bytes mas alla
+C 0x62bd sobre la coordenada de ahora
+C 0x62bf ocho bytes mas alla
+C 0x62c5 (0xE061), la otra mitad del producto
+
+L 0x62ca decide_el_signo_de_la_segunda  Igual que arriba pero mirando el bit 4 del angulo
+C 0x62ca (0xE056), el lado
+C 0x62d0 (0xE037), su bit 4
+
+L 0x62da y_si_manda_el_otro  Con 0xE056 a cero manda 0xE038
+C 0x62da (0xE038)
+
+L 0x62e1 cambia_el_signo_tambien  Hacia el otro lado
+L 0x62e3 suma_la_segunda_coordenada  Y se guarda ocho bytes mas alla, igual que la primera
+C 0x62e3 sobre la coordenada de ahora
+C 0x62e4 ocho bytes mas alla
+
+L 0x62eb rebota_la_pelota  El bote de verdad: un sonido, sube el contador de 0xE033, y a la altura de 0xE0A1 le resta 0x58 -con los bytes al reves, que es como se guarda-. Si al segundo bote 0xE388 tiene el bit 6, la altura se fija en 0xA800 de golpe
+C 0x62eb el aviso del bote
+C 0x62ee A = 0x0a, el sonido del bote
+C 0x62f4 (0xE031) := 0
+C 0x62f7 (0xE057) := 0
+C 0x62fd (0xE033), un bote mas
+C 0x62fe (0xE0A1), la altura
+C 0x6301 con los bytes cambiados
+C 0x6304 menos 0x58
+C 0x630a y otra vez cambiados
+C 0x630d (0xE388), su bit 6
+C 0x6314 y solo en el segundo bote
+C 0x631a la altura se pone en 0xA800
+C 0x631d la altura nueva
+C 0x6320 y si no se paso, otra vuelta
+
+L 0x6323 se_para_la_pelota  La pelota deja de estar bateada
+C 0x6324 (0xE039) := 0
+
+L 0x6328 todavia_no_bota  Con 0xE031 puesto toca botar, y si no solo hay que seguir moviendola
+C 0x6328 (0xE031)
+
+L 0x632f mueve_la_pelota_bateada  Le suma a la coordenada de 0xE0A7 lo que diga 0xE054, lo parte por 128 y de ahi saca la velocidad de este cuadro; la acumula en 0xE066/0xE068 y se la reparte a las dos coordenadas segun el angulo
+C 0x632f HL = 0xE0A7, la coordenada de caida
+C 0x6336 (0xE054), lo andado
+C 0x6339 sumado
+C 0x633c con los bytes cambiados
+C 0x633f partido por 128
+C 0x6345 lo nuevo, a 0xE054
+C 0x6348 B = el cociente
+C 0x634c (0xE057): si esta puesto...
+C 0x6352 ...el cociente se parte por dos
+C 0x6359 y a 0xE054 se le suma medio paso
+
+L 0x635e acumula_el_recorrido  Suma B veces el paso de 0xE066 sobre el acumulador de 0xE068, que es como se multiplica sin usar la calculadora
+C 0x635e (0xE066), el paso
+C 0x6362 (0xE068), el acumulado
+
+L 0x6366 suma_un_paso  B veces
+C 0x6366 una vez menos
+C 0x636a un paso mas
+
+L 0x636d reparte_el_recorrido  El byte bajo del acumulado se queda, el alto es lo que hay que mover, y el angulo decide con que signo y a que coordenada le toca
+C 0x636e el byte bajo se queda acumulado
+C 0x6371 C = el alto, lo que se mueve
+C 0x6372 HL = 0xE037, el angulo
+C 0x6375 (0xE056), el lado
+
+L 0x6384 mira_el_bit_del_angulo  El bit 4 del angulo decide el signo
+C 0x6384 el bit 4
+
+L 0x638a mira_el_nibble_del_angulo  Con 0xE056 a cero manda el nibble alto entero
+C 0x638a el angulo
+C 0x638b su nibble alto
+
+L 0x638f cambia_el_signo_del_paso  Hacia el otro lado
+C 0x6390 al reves
+
+L 0x64d8 multiplica_por_a  Coge (0xE066) con los bytes cambiados, lo deja de multiplicando y multiplica por lo que traiga A
+C 0x64d8 (0xE066)
+C 0x64dc con los bytes cambiados
+C 0x64e7 A es el multiplicador
+
+L 0x64ea saca_la_componente_del_angulo  Del angulo de 0xE037 se queda con cinco bits -y con el bit 4 puesto le da la vuelta al signo-, lo multiplica por 16 y guarda el resultado en 0xE066/0xE067, con el acumulado de 0xE068 a cero
+C 0x64ea (0xE037), el angulo
+C 0x64ed B = 0x1f, los cinco bits utiles
+C 0x64ef el bit 4 dice de que lado
+C 0x64f3 y entonces el angulo va al reves
+C 0x64f5 recortado a cinco bits
+C 0x64f9 (0xE060) := 0
+C 0x64fc (0xE061) := el angulo
+C 0x64fe (0xE062) := 0
+C 0x6501 (0xE063) := 16, el multiplicador
+C 0x6509 el resultado, a 0xE066
+C 0x650f y a 0xE067
+C 0x6515 el acumulado, a cero
+
+L 0x6519 divide_la_calculadora  La division de la calculadora: ocho vueltas de desplazar 24 bits a la izquierda y restar el divisor de 0xE063 cuando quepa. El cociente entra por abajo en 0xE062 y el resto se queda en 0xE060
+C 0x651a ocho vueltas, una por bit
+
+L 0x651c una_vuelta_de_la_calculadora  Desplaza los tres bytes y prueba a restar
+C 0x651c HL = 0xE062, el byte bajo
+C 0x6520 tres bytes
+
+L 0x6522 desplaza_un_byte  Los tres, de abajo arriba, con el acarreo encadenado
+C 0x6529 HL = 0xE063, el divisor
+C 0x652d cabe?
+C 0x6530 el resto se queda con lo que sobra
+C 0x6532 y el bit del cociente, puesto
+
+L 0x6534 otra_vuelta_de_la_calculadora  Hasta las ocho
+C 0x6534 una vuelta menos
+
+L 0x6539 multiplica_la_calculadora  La multiplicacion de la calculadora: dieciseis vueltas de desplazar 24 bits a la izquierda y, cuando salga acarreo, sumar el multiplicando de 0xE063 al producto. El resultado se queda en 0xE060..0xE062
+C 0x653a dieciseis vueltas, una por bit
+
+L 0x653c una_vuelta_de_la_multiplicacion  Desplaza y, si sale acarreo, suma
+C 0x653c HL = 0xE062
+C 0x6540 los tres bytes, encadenados
+C 0x6548 sin acarreo no se suma
+C 0x654a HL = 0xE063, el multiplicando
+C 0x654f sumado por abajo...
+C 0x6553 ...y el acarreo, arrastrado
+C 0x6558 hasta el byte de mas peso
+
+L 0x655b otra_vuelta_de_multiplicacion  Hasta las dieciseis
+C 0x655b una vuelta menos
+
+D 0x655f 0x6573 tamanos_de_la_pelota  Cinco entradas de cuatro bytes: por cada altura, el guion del dibujo de la pelota y el de su sombra. 0x6498 entra aqui con el indice por cuatro, y de ahi salen los dos patrones que sube a VRAM
+F 0x655f 4
+
+D 0x6573 0x659e dibujos_de_la_pelota  Los cinco tamanos de la pelota, cada uno un guion que llena los 32 bytes de un patron de sprite: siete filas el mas grande (0x6573), seis el siguiente (0x657e), cuatro (0x6588), cuatro mas finas (0x6590) y dos el mas pequeno (0x6598). La pelota se hace chica al alejarse, y son cinco dibujos, no un escalado
+F 0x6573 10
+
+L 0x659e parte_por_128  Deja HL de dividendo y divide entre 128, que es la escala en la que trabaja toda la trayectoria
+C 0x659e HL, al hueco de la calculadora
+
+L 0x65a4 pon_divisor_y_divide  El divisor va en 0xE063, y a dividir
+C 0x65a4 (0xE062) := 0
+C 0x65a7 (0xE063) := 0x80
+
+# ======================================================================
+# TANDA 13: la pelota y su sombra, y de donde sale el tamano
+# ======================================================================
+#
+# La pelota bateada se dibuja con DOS sprites y son ellos los que dan la
+# sensacion de altura:
+#     0xE0B0..0xE0B3  el atributo de LA SOMBRA, que va por el suelo. Se vuelca
+#                     al ultimo sprite de la tabla, en VRAM 0x7b7c.
+#                     SUPOSICION: cual de los dos es la sombra se ha deducido
+#                     de que el bote ocurre cuando 0xE0B4 alcanza a 0xE0B0 y
+#                     de que 0xE0B0 no se mueve en vertical; no se ha medido
+#     0xE0B4..0xE0B7  el atributo de LA PELOTA. Se vuelca al primero, 0x7b00
+#     0xE042          el byte alto de la altura de la pelota, que junto con
+#                     0xE0B4 hace un valor de 16 bits
+# El bote ocurre cuando la fila de la pelota alcanza a la de la sombra, y la
+# distancia entre las dos ES la altura. De ahi sale tambien el tamano con que
+# se dibuja: cuanto mas alta, mas grande -que es lo que se ve desde detras del
+# plato-, y cuanto mas arriba esta la sombra en la pantalla -o sea mas lejos-,
+# mas pequena.
+
+L 0x639b reparte_el_paso_horizontal  Con el paso ya calculado en C, le pone el signo que diga 0xE038 y lo suma a la sombra y a la pelota
+C 0x639b (0xE038), el sentido
+C 0x639f A = el paso
+C 0x63a0 DE = el paso con signo, en 16 bits
+C 0x63a5 hacia el otro lado
+C 0x63a7 y el byte alto, a 0xFF
+
+L 0x63a9 el_paso_cero  Con el paso a cero, tambien el byte alto
+C 0x63ac D = 0
+
+L 0x63ad suma_el_paso  A la columna de la sombra le suma el paso, y a la pareja de 16 bits de la pelota le suma el paso con signo
+C 0x63ad HL = 0xE0B0, la fila de la sombra
+C 0x63b0 mas el paso
+C 0x63b2 (0xE0B4), el byte bajo de la pelota
+C 0x63b6 (0xE042), el alto
+C 0x63ba mas el paso con signo
+C 0x63bc y de vuelta a los dos bytes
+C 0x63c3 HL = 0xE0B1, la columna de la sombra
+C 0x63c7 mas lo que traiga B
+C 0x63c9 (0xE038): valiendo 0xFF no hay tope que valga
+C 0x63d0 (0xE0B0): por debajo de la fila 0x78 tampoco
+C 0x63d8 por la izquierda del todo, la pelota se para
+C 0x63dd y por la derecha, tambien
+
+L 0x63e2 guarda_la_columna  La columna nueva, a la sombra y a la pelota, y de paso se acumulan catorce unidades de recorrido
+C 0x63e2 la columna de la sombra
+C 0x63e3 y la de la pelota
+C 0x63e6 (0xE034), lo recorrido
+C 0x63e9 catorce mas por cuadro
+C 0x63f1 (0xE0A9), la segunda coordenada de la caida
+C 0x63f4 con los bytes cambiados
+C 0x63f7 (0xE036), lo que llevaba
+C 0x63fe (0xE032) := 0: de momento, hacia arriba
+C 0x6403 comparada con lo recorrido
+C 0x640b la resta, del reves
+C 0x640e (0xE032) := 1: la pelota va de bajada
+C 0x6411 (0xE057) := 1
+C 0x6415 (0xE650) := 2, el canal de sonido
+
+L 0x6418 saca_la_velocidad_vertical  Lo que queda por recorrer, partido por 128: eso es lo que la pelota sube o baja este cuadro
+C 0x6419 HL = 0xE060, el hueco de la calculadora
+C 0x6420 partido por 128
+C 0x6426 el resto se guarda para el cuadro siguiente
+C 0x6429 (0xE062), el cociente
+C 0x642c DE = el cociente en 16 bits
+C 0x6430 a cero, no hay nada que mover
+C 0x6435 (0xE032): de bajada, cambia de signo
+C 0x6439 al reves
+
+L 0x643d mueve_la_pelota_en_vertical  Le resta la velocidad a la pareja de 16 bits de la pelota y, si con eso alcanza a la sombra, marca el bote
+C 0x643d (0xE0B0), la fila de la sombra
+C 0x6440 pasada la 0xD0, la pelota se para
+C 0x6445 B = la fila de la sombra
+C 0x6446 (0xE0B4), el byte bajo de la pelota
+C 0x644a (0xE042), el alto
+C 0x644f menos la velocidad
+C 0x6452 y de vuelta a los dos bytes
+C 0x6459 con el byte alto puesto sigue por el aire
+C 0x645d la fila de la pelota...
+C 0x645d comparada con la de la sombra
+C 0x6462 (0xE031) := 1: bote
+C 0x6468 y la pelota se queda pegada a la sombra
+
+L 0x646b elige_el_tamano_de_la_pelota  El tamano sale de dos cosas: la ALTURA -la distancia entre la fila de la sombra y la de la pelota, que da hasta tres pasos de tamano- y lo LEJOS que esta -si la sombra esta por encima de la fila 0x40, uno mas-. B acaba valiendo de 0 (la mas grande) a 4 (la mas pequena)
+C 0x646b B = 0, el tamano mas grande
+C 0x646d (0xE042): con el byte alto puesto, la pelota esta muy arriba
+C 0x6473 C = la fila de la sombra
+C 0x6477 en la 0xD0 no se dibuja
+C 0x647a la fila de la pelota
+C 0x647d tampoco
+C 0x6482 la altura: la sombra menos la pelota
+C 0x6483 mas de 0x21 de altura: la mas grande
+C 0x6487 un tamano menos
+C 0x6488 mas de 0x0f
+C 0x648c otro menos
+C 0x648d mas de 0x06
+C 0x6491 y otro
+
+L 0x6492 y_si_ademas_esta_lejos  Con la sombra por encima de la fila 0x40, un tamano menos todavia
+C 0x6493 la fila 0x40 es el fondo del campo
+C 0x6497 un tamano menos
+
+L 0x6498 dibuja_la_pelota_y_su_sombra  Sube a VRAM los dos patrones del tamano elegido -la pelota en 0x1800 y la sombra en 0x1be0- y vuelca los dos atributos. Con la pelota por las nubes, la sombra se manda a la fila 0xCF y desaparece
+C 0x6498 HL = 0x655f, los tamanos
+C 0x649c por cuatro: cuatro bytes por entrada
+C 0x64a1 DE = el guion de la pelota
+C 0x64a7 DE = VRAM 0x5800, o sea el patron 0
+C 0x64aa descomprimido ahi
+C 0x64ae el guion de la sombra
+C 0x64b2 DE = VRAM 0x5be0, el patron 31
+C 0x64b8 HL = 0xE0B0, el atributo de la sombra
+C 0x64bb DE = VRAM 0x7b7c, el ultimo sprite
+C 0x64c3 (0xE042): con la pelota muy arriba...
+C 0x64c9 ...la sombra se esconde con el 0xCF de 0x64d4
+
+L 0x64cc y_ahora_la_pelota  El atributo de la pelota va al primer sprite de la tabla
+C 0x64cc DE = VRAM 0x7b00, el primer sprite
+
+L 0x64cf vuelca_un_atributo  Los cuatro bytes de un atributo de sprite
+C 0x64cf cuatro bytes
+
+D 0x64d4 0x64d8 sprite_escondido  Un atributo de sprite con la fila 0xCF, que es la de esconder. 0x64c9 lo usa para quitar la sombra de en medio cuando la pelota esta demasiado alta
+F 0x64d4 4
+
+# ======================================================================
+# TANDA 14: el motor de sonido
+# ======================================================================
+#
+# Tres canales, once bytes de estado cada uno, empezando en 0xE661:
+#     +0  cuadros que le quedan a la nota
+#     +1  la duracion con la que se recarga
+#     +2  el numero de sonido que esta sonando; cero quiere decir callado, y
+#         los bits 7 y 6 son los dos modos especiales
+#     +3  y +4  por donde va el guion
+#     +5  cuantas veces se dobla la frecuencia: la octava
+#     +6  y +7  el volumen y su caida
+#     +8  el contador de la caida
+#     +9  las vueltas que lleva dado el bucle del guion
+#     +0x0a  la unidad de duracion
+# Ademas 0xE660 lleva la copia del registro 7 del PSG, el que dice que canales
+# suenan y cuales callan.
+#
+# EL GUION DE UN SONIDO, tal como lo lee 0x6ced, por el nibble alto del byte:
+#     0xFF  fin: el canal se calla
+#     0xFE  vuelta al principio, contando las que lleva en el byte 9
+#     0x2n  cambia la duracion de las notas a n
+#     0x1n  ruido: n va al registro 6 del PSG y el canal pasa a ruido
+#           (SUPOSICION: no se ha escuchado canal a canal en el emulador)
+#     resto  una nota, con su duracion en el nibble alto
+
+L 0x6c0e pide_un_sonido  La puerta de entrada del motor: A trae el numero de sonido. Con la demostracion en marcha -0xE002 puesto- el cartucho se queda mudo, y por eso las escenas automaticas no suenan
+C 0x6c0f (0xE002), el piloto automatico
+C 0x6c13 con el a cero, sonido
+
+L 0x6c17 pide_un_sonido_de_verdad  Guarda los registros y llama al reparto
+L 0x6c20 reparte_el_sonido  Decide en cuantos canales cabe el sonido -tres para el 0x97, el 0x90 y los que pasan de 0x8A, dos para el 0x01, y uno para el resto- y se lo queda solo si su numero es mayor que el que ya estaba sonando. Es una PRIORIDAD: los seis bits bajos del numero hacen de rango
+C 0x6c20 HL = 0xE663, el sonido del primer canal
+C 0x6c23 C se queda el numero pedido
+C 0x6c24 tres canales
+C 0x6c26 el 0x97 va a tres
+C 0x6c2a y el 0x90 tambien
+C 0x6c2e dos canales
+C 0x6c2f de 0x8A para arriba, dos
+C 0x6c33 y el 0x01 tambien
+C 0x6c37 un solo canal
+C 0x6c39 el del tercero, 0xE679
+
+L 0x6c3c mira_la_prioridad  Compara los seis bits bajos del pedido con los del que ya suena. Si el nuevo es menor, ni se intenta
+C 0x6c3c E = lo que hay sonando
+C 0x6c3e sin los dos bits de modo
+C 0x6c41 y el pedido, igual
+C 0x6c44 el nuevo tiene que ser mayor
+C 0x6c45 y el viejo, de vuelta
+C 0x6c46 si no lo es, no suena
+C 0x6c47 el numero por dos: la tabla lleva punteros
+C 0x6c48 DE = 0x6e8e, los punteros de sonido
+
+L 0x6c52 arranca_los_canales  Le da a cada canal su guion, con la nota a un cuadro y la caida a cero. Un sonido de tres canales ocupa tres punteros seguidos de la tabla
+C 0x6c52 un cuadro para la primera nota
+C 0x6c55 y la duracion, a uno
+C 0x6c58 el numero de sonido
+C 0x6c5a el byte bajo del guion
+C 0x6c5f y el alto
+C 0x6c60 cinco bytes mas alla
+C 0x6c65 la caida, a cero
+C 0x6c6a el canal siguiente
+
+L 0x6c6d cierra_el_bucle_del_guion  El comando 0xFE: sube la cuenta de vueltas y, mientras no llegue a la que pide el byte siguiente, vuelve a pedir el mismo sonido desde el principio
+C 0x6c6e las vueltas dadas
+C 0x6c71 una mas
+C 0x6c72 contra las que pide el guion
+C 0x6c73 llegado el numero, se acaba
+C 0x6c79 y si se paso, se queda como estaba
+
+L 0x6c7a repite_el_sonido  Pide otra vez el mismo numero, que es como el guion vuelve a empezar
+C 0x6c7b el numero de sonido de este canal
+C 0x6c84 y la cuenta de vueltas, guardada
+
+L 0x6c88 abre_o_cierra_el_canal  Toca el bit del registro 7 del PSG que deja sonar a este canal: con D a 1 lo cierra y con D a 0 lo abre. Ademas fuerza el bit 2 -el ruido del tercer canal- salvo que el bit 5 diga lo contrario
+C 0x6c88 (0xE660), la copia del registro 7
+C 0x6c8c C = el canal
+C 0x6c92 su bit, colocado en su sitio
+C 0x6c95 D dice si se abre o se cierra
+C 0x6c98 cerrar es quitar el bit
+C 0x6c9c y abrir, ponerlo
+
+L 0x6c9d remata_el_registro_7  El bit 2 puesto y, si el 5 lo pide, quitado otra vez
+C 0x6c9d el bit 2
+C 0x6c9f el bit 5 manda
+C 0x6ca3 y entonces el 2 se cae
+
+L 0x6ca5 escribe_el_registro_7  La copia se guarda y se manda al PSG
+C 0x6ca5 la copia
+C 0x6ca9 registro 7 del PSG
+
+L 0x6cae mueve_el_sonido  El cuadro de sonido, el que llama la interrupcion. Repone el registro 7 y le da un cuadro a cada uno de los tres canales, saltando de once en once bytes
+C 0x6cae (0xE660), la copia del registro 7
+C 0x6cb5 C = 1, el primer canal
+C 0x6cb7 IX = 0xE661, su estado
+C 0x6cbc tres canales
+C 0x6cbe once bytes por canal
+
+L 0x6cc1 un_cuadro_de_un_canal  Con el sonido 1 hay ademas un efecto aparte
+C 0x6cc2 el numero de sonido de este canal
+C 0x6cc6 el 1 lleva efecto
+C 0x6ccc callado no hay nada que hacer
+C 0x6cd1 el canal siguiente: C sube de dos en dos
+C 0x6cd4 y IX, once bytes
+
+L 0x6cd9 lleva_un_canal  Abre el canal si su bit 6 esta a cero, y baja el contador de la nota; mientras no llegue a cero, no se lee nada del guion
+C 0x6cda el bit 6 del numero de sonido
+C 0x6cdc D = 1
+C 0x6ce2 el numero otra vez
+C 0x6ce6 con el bit 7 puesto, el modo largo
+C 0x6ce9 un cuadro menos de esta nota
+
+L 0x6ced lee_el_guion_del_sonido  Un byte del guion. 0xFF acaba, 0xFE cierra el bucle, y con el bit 7 del modo puesto se va por el camino largo; si no, se miran los prefijos 0x2n -duracion- y 0x1n -ruido- antes de la nota
+C 0x6ced HL = por donde va el guion
+C 0x6cf3 el byte de comando
+C 0x6cf4 0xFE cierra el bucle
+C 0x6cf9 0xFF acaba
+C 0x6cfb el bit 7: el modo largo
+C 0x6d02 el prefijo 0x2n
+C 0x6d08 su nibble bajo es la duracion nueva
+C 0x6d0b guardada
+
+L 0x6d0f mira_si_hay_ruido  El prefijo 0x1n manda cinco bits al registro 6 del PSG, que es el periodo del ruido, y abre el canal en modo ruido
+C 0x6d0f el byte otra vez
+C 0x6d12 el prefijo 0x1n
+C 0x6d17 cinco bits de periodo
+C 0x6d1a registro 6 del PSG, el del ruido
+C 0x6d20 D = 0: el canal, abierto
+C 0x6d26 y al byte siguiente
+
+L 0x6d28 mira_el_modo_del_canal  Con el bit 6 puesto y en el canal 5, el guion se lee de otra manera
+C 0x6d28 el bit 6 del modo
+C 0x6d2f solo el canal 5
+C 0x6d35 el guion, adelantado
+
+L 0x6d3f toca_una_nota  El nibble alto es la duracion y el bajo, junto con el byte siguiente, la frecuencia que va a los registros 0 y 1 del PSG
+C 0x6d3f el nibble alto, la duracion
+C 0x6d42 y el bajo, parte de la frecuencia
+C 0x6d45 E = el byte siguiente
+C 0x6d47 el guion, adelantado
+C 0x6d4e la frecuencia, al PSG
+C 0x6d52 la duracion, bajada a la derecha
+
+L 0x6d56 arranca_la_nota  Recarga el contador con la duracion y prepara la caida del volumen
+C 0x6d57 la duracion
+C 0x6d5a al contador
+C 0x6d5d mas tres: el contador de la caida
+
+L 0x6d64 calla_el_canal  El comando 0xFF: cierra el canal, borra su numero de sonido y le pone el volumen a cero
+C 0x6d65 las vueltas, a cero
+C 0x6d68 D = 1: el canal se cierra
+C 0x6d6f y el numero de sonido, borrado
+C 0x6d72 volumen cero
+
+L 0x6d75 lleva_una_nota_larga  El modo del bit 7: la nota dura varios cuadros y el volumen va cayendo. Cuando el contador de la nota se agota se lee el guion, y mientras tanto el contador de la caida decide cuando bajar un punto el volumen
+C 0x6d75 un cuadro menos
+C 0x6d78 agotada, al guion
+C 0x6d7b y el contador de la caida
+C 0x6d81 comparado con el de la nota
+C 0x6d86 por debajo de tres, se baja el volumen
+
+L 0x6d8b acelera_la_caida  Un paso mas de caida
+L 0x6d8e baja_el_volumen  El volumen, un punto menos; a cero ya no se baja mas
+C 0x6d8e el volumen de ahora
+C 0x6d91 uno menos
+C 0x6d92 a cero, ya esta
+
+L 0x6d97 escribe_el_volumen  Al registro de volumen del canal: 8, 9 o 10 segun cual sea
+C 0x6d98 C partido por dos
+C 0x6d99 mas 0x88: el registro que le toca
+C 0x6d9c al PSG
+
+L 0x6d9f lee_una_nota_larga  El camino largo del guion, con hasta tres prefijos delante de la nota: 0xDn la unidad de duracion, 0xFn la caida y 0xEn la octava
+C 0x6d9f el nibble alto
+C 0x6da1 el prefijo 0xDn
+C 0x6da8 su nibble bajo es la unidad de duracion
+
+L 0x6dad mira_el_prefijo_de_caida  El 0xFn deja la caida en el byte 6
+C 0x6dad el prefijo 0xFn
+C 0x6db3 guardada
+
+L 0x6db8 mira_el_prefijo_de_octava  El 0xEn deja la octava en el byte 5
+C 0x6db8 el prefijo 0xEn
+C 0x6dbe guardada
+
+L 0x6dc3 calcula_la_duracion  El nibble bajo dice cuantas unidades dura la nota, y la unidad esta en el byte 0x0a: se multiplica sumando
+C 0x6dc3 el nibble bajo
+C 0x6dc6 la unidad de duracion
+
+L 0x6dcb suma_una_unidad  Una vez por unidad
+L 0x6dd0 saca_la_nota  Guarda la duracion, coge el byte de la nota y le da la octava desplazando la frecuencia
+C 0x6dd0 la duracion de esta nota
+C 0x6dd3 el byte de la nota
+C 0x6dd5 el guion, adelantado
+C 0x6ddb el nibble alto es el indice de la nota
+C 0x6de2 menos doce: la caida de partida
+C 0x6de9 si no es cero, la del byte 6
+
+L 0x6def busca_la_frecuencia  El indice entra en la tabla de notas de 0x6e84 y el resultado se dobla tantas veces como diga la octava
+C 0x6def arranca la nota
+C 0x6df3 HL = 0x6e84, la tabla de notas
+C 0x6df9 la frecuencia de partida
+C 0x6dfc la octava
+
+L 0x6e03 dobla_la_frecuencia  Una vez por octava
+L 0x6e06 escribe_la_frecuencia  Los dos bytes de la frecuencia, a los dos registros del canal
+C 0x6e07 el byte alto primero
+C 0x6e0e y luego el bajo
+
+L 0x6e14 lleva_el_efecto  El efecto del sonido 1, que cambia segun lo que valga 0xE650 y segun el canal
+C 0x6e14 HL = 0xE653
+C 0x6e17 DE = 0x6e77, la primera tabla del efecto
+C 0x6e1b el canal 3 va por aqui
+C 0x6e1f y los demas por 0xE657 y 0x6e7b
+
+L 0x6e25 elige_la_tabla_del_efecto  0xE650 elige: con 1 va por un lado, por debajo por otro, y por encima mira el byte de antes
+C 0x6e25 (0xE650), el mando del efecto
+C 0x6e31 el byte de antes
+C 0x6e34 DE = 0x6e7f
+C 0x6e3c o 0x6e83
+
+L 0x6e41 corre_el_efecto  Ocho unidades mas cada vez
+C 0x6e43 ocho mas
+
+D 0x6e77 0x6e84 tablas_del_efecto  Cuatro grupos que lee 0x6e14 -0x6e77, 0x6e7b, 0x6e7f y 0x6e83-, uno por combinacion de canal y valor de 0xE650. El ultimo se mete ya en la tabla de notas
+F 0x6e77 4
+
+D 0x6e84 0x6e8e notas  Diez frecuencias de partida, indexadas por el nibble alto del byte de la nota. La octava se consigue doblando el valor tantas veces como diga el byte 5 del canal, que es lo que hace 0x6e03
+F 0x6e84 1
+
+D 0x6e8e 0x6ec6 punteros_de_sonido  28 punteros de 16 bits, uno por sonido. Un sonido de tres canales se lleva tres seguidos, empezando por el numero que se pidio
+F 0x6e8e 2
+
+D 0x6ec6 0x7080 guiones_de_sonido  Los guiones de los sonidos, a los que apunta punteros_de_sonido
+F 0x6ec6 16
+
+# ======================================================================
+# TANDA 15: el bateador y el momento del golpe
+# ======================================================================
+
+L 0x7080 lleva_al_bateador  El cuadro del bateador. El bit 0 de 0xE140 dice si ya esta bateando -y entonces se va por 0x70de-; con el bit 1 puesto o el bit 2 a cero no hay nada que hacer. Si no, se lee el mando: los cuatro bits altos arrancan el bateo y los cuatro bajos mueven al bateador por la caja
+C 0x7080 HL = 0xE140, la ficha del bateador
+C 0x7084 el bit 0: ya esta bateando
+C 0x7087 el bit 1
+C 0x7089 el bit 2
+C 0x708b sin pelota en juego, nada
+C 0x7090 lee el mando del bateador
+C 0x7094 los cuatro bits altos: los botones
+C 0x7099 el bit 0: a batear
+
+L 0x709c mueve_al_bateador  De los cuatro bits bajos del mando salen dos pasos, B en un eje y C en el otro, cada uno de -1, 0 o +1
+C 0x709d los cuatro bits de direccion
+C 0x709f sin ninguno, no se mueve
+C 0x70a1 B = 0 y C = 0
+C 0x70a6 el bit 0
+C 0x70a9 un paso atras
+
+L 0x70aa el_segundo_bit  El bit 1
+C 0x70ad un paso adelante
+
+L 0x70ae el_tercer_bit  El bit 2
+C 0x70b1 un paso atras en el otro eje
+
+L 0x70b2 el_cuarto_bit  El bit 3
+C 0x70b5 un paso adelante
+
+L 0x70b6 aplica_los_pasos  Suma los dos pasos a la posicion del bateador, con dos topes por eje: 0xA0 y 0xB0 en uno, y 0x69/0x6E o 0x82/0x87 en el otro segun de que lado batee
+C 0x70b7 el bit 6: hay que redibujarlo
+C 0x70be sobre la fila de ahora
+C 0x70bf el tope de arriba
+C 0x70c3 y el de abajo
+C 0x70c7 la fila nueva
+
+L 0x70c8 mueve_en_el_otro_eje  Los topes de la columna dependen del lado
+C 0x70c9 DE = 0x696e, los topes de un lado
+C 0x70cc (0xE140), su bit 4
+C 0x70d3 y del otro, 0x8287
+C 0x70d7 sobre la columna de ahora
+C 0x70d8 el primer tope
+C 0x70da y el segundo
+C 0x70dc la columna nueva
+
+L 0x70de lleva_el_bateo  Con el bateo ya en marcha: mientras el mando siga pulsado el bate avanza de postura cada tres cuadros, y en cuanto suelta o llega a la sexta se acaba
+C 0x70e0 lee el mando
+C 0x70e4 los botones
+C 0x70ea la postura del bate
+C 0x70eb sus tres bits bajos
+C 0x70ed la quinta es el final del recorrido
+
+L 0x70f5 pasa_la_postura_del_bate  Cada tres cuadros, una postura mas; la sexta cierra el bateo
+C 0x70f5 un cuadro menos
+C 0x70f9 el bit 6: hay que redibujar
+C 0x70fc tres cuadros para la siguiente
+C 0x7100 la postura siguiente
+C 0x7104 la sexta acaba
+
+L 0x7109 mira_si_le_da_a_la_pelota  Con el bate en la postura 2, 3 o 4 y la pelota dentro de la caja de contacto de 0x72cc, hay golpe
+C 0x7109 sin pelota en juego, nada
+C 0x710e el bit 4: de que lado batea
+C 0x7112 DE = (0xE130), donde esta la pelota
+C 0x7116 BC = (0xE143), donde esta el bate
+C 0x711a A = 0, la caja de un lado
+C 0x711e o la del otro
+
+L 0x711f prueba_la_caja  Sin acarreo, la pelota esta fuera de la caja y no hay golpe
+C 0x7120 la prueba
+C 0x7124 fuera: no hay golpe
+C 0x7126 la postura del bate
+C 0x7128 antes de la 2 no hay golpe
+C 0x712b y de la 5 en adelante, tampoco
+C 0x7130 C = la columna del bate
+C 0x7132 HL = 0x7285, los angulos de un lado
+C 0x7135 (0xE140), su bit 4
+C 0x713c o los del otro, 0x7294
+
+L 0x713f busca_el_angulo  Salta de cinco en cinco hasta la fila de la postura y luego indexa por la columna. Al angulo que sale se le suman dos bits del registro R del Z80, o sea que no hay dos golpes exactamente iguales
+C 0x713f cinco por fila
+C 0x7147 mas la columna
+C 0x714a B = el angulo
+C 0x714b el registro de refresco, de dado
+C 0x714d dos bits de azar
+C 0x7150 (0xE037), el angulo del golpe
+C 0x7153 mide donde le da la pelota al bate
+C 0x7157 (0xE012), el numero de jugadores
+C 0x715d (0xE402), de quien es el turno
+C 0x7167 con la maquina bateando, el golpe se ajusta
+C 0x716b B = 6, un golpe del monton
+
+L 0x716d monta_el_golpe  Con la fuerza por debajo de 10, la pelota sale: se marca el estado 4, se enciende el bit 5 del bateador, y de las dos tablas salen la altura de partida y las dos componentes
+C 0x716e de 10 para arriba no hay golpe
+C 0x7172 (0xE400) := 4, la pelota bateada
+C 0x717a el bit 5 del bateador
+C 0x717e HL = 0x72a8, las alturas
+C 0x7181 por dos: son palabras
+C 0x7185 DE = 0xE0A1, la altura
+C 0x718f los dos bits bajos de la fuerza
+C 0x7191 por dos
+C 0x7192 HL = 0x72ba, las componentes
+C 0x7196 y un bit mas de azar
+C 0x71a3 el bit 6 de 0xE388
+C 0x71a8 (0xE700) := 0
+C 0x71ae o 1, si la fuerza llega a dos
+
+L 0x71b0 busca_la_componente  Salta de dos en dos hasta la entrada que toque
+L 0x71b3 salta_una_componente  Dos bytes por entrada
+C 0x71b7 DE = 0xE0A4, la primera componente
+C 0x71ba los dos bytes...
+C 0x71c0 ...uno en 0xE0A4 y otro en 0xE0A6
+C 0x71c1 BC = (0xE130), donde estaba la pelota
+C 0x71c5 HL = 0xE0B0, el atributo de la sombra
+C 0x71c8 ocho pixeles mas abajo
+C 0x71cf el patron 0x7c
+C 0x71d2 y el color 1
+C 0x71d5 la pelota, en la misma esquina
+C 0x71da y su color, el 0x0f
+C 0x71dc HL = 0xE0A2
+C 0x71df (0xE388), su bit 6
+C 0x71e6 B = 0x80, medio paso
+
+L 0x71f0 corrige_la_altura  Con el bit 6 de 0xE388 la altura sube; sin el, baja 0x50
+C 0x71f1 mas el paso
+C 0x71f6 con acarreo, el byte alto sube
+
+L 0x71fa baja_la_altura  Lo normal: 0x50 menos
+C 0x71fb 0x50 menos
+C 0x7201 y el byte alto baja
+
+L 0x7202 mira_el_boton_al_golpear  Con los botones sueltos en el momento del golpe, la altura se fija en 0x6800: la pelota sale mas plana
+C 0x7205 lo que se acaba de pulsar
+C 0x7206 los dos botones
+C 0x720a (0xE0A1) := 0x6800
+
+L 0x7210 lanza_la_pelota_bateada  Deja el estado listo para que 0x620a se haga cargo: borra el lanzador, pone los tres interruptores de la pelota bateada, esconde la pelota vieja y suena el golpe
+C 0x7210 el ajuste de la maquina
+C 0x7214 (0xE100) := 0: el lanzador ya no manda
+C 0x7219 (0xE03B) := 1, el plazo hasta el bote
+C 0x721c (0xE030) := 1
+C 0x721f (0xE039) := 1: hay pelota bateada
+C 0x7224 (0xE038) := 0xff
+C 0x722a el bit 6 del bateador
+C 0x722f el bit 2 de 0xE388
+C 0x7233 (0xE130) := 0xcf: la pelota vieja, escondida
+C 0x7236 A = 0x0b, el sonido del bate
+C 0x723c (0xE650) := 0
+C 0x723f y el sonido 1 encima
+C 0x7244 HL = 0xE1A0, las tres bases
+C 0x7247 tres
+
+L 0x7249 pone_en_marcha_a_los_de_base  El bit 1 de cada base pasa a ser el bit 0 de su pareja de 23 bytes mas alla: los que estaban en base echan a correr
+C 0x7249 C = la ficha
+C 0x724b 23 bytes mas alla
+C 0x724e el bit 0, a cero
+C 0x7250 el bit 1 de la ficha
+C 0x7254 y entonces el bit 0, puesto
+C 0x7257 la base siguiente
+
+L 0x725c acaba_el_bateo  Sin golpe: el bit 0 del bateador se apaga, se marca para redibujar y se limpian los tres bits bajos de su postura. Si tenia el bit 5 es que ya habia dado, y entonces hay que recogerlo
+C 0x725f el bit 0, apagado
+C 0x7261 el bit 6: hay que redibujar
+C 0x7268 los tres bits bajos de la postura, fuera
+C 0x726c el bit 5: ha habido golpe
+C 0x7270 (0xE100), su bit 1
+C 0x7279 el bit 0 de 0xE380
+
+L 0x727c recoge_al_bateador  Con el golpe dado: el bateador se esconde, la primera base se pone a 2 y se avisa por el bit 4 de 0xE380
+C 0x727d la fila 0xCF: escondido
+C 0x7282 (0xE180) := 2, la primera base
+C 0x7287 el bit 4 de 0xE380
+
+D 0x728a 0x72a8 angulos_del_golpe  Dos tandas de quince, una por lado del bateador: por cada postura del bate (tres) y cada columna (cinco), el angulo con el que sale la pelota. Van de 0x3c a 0x04 y vuelven a 0x3c, o sea del extremo de un lado al del otro. 0x713f los recorre de cinco en cinco
+F 0x728a 5
+
+D 0x72a8 0x72ba alturas_del_golpe  Diez palabras: la altura de partida de la pelota segun la fuerza del golpe, de 0x0110 a 0x0200. La ultima se mete dos bytes en la tabla de al lado
+F 0x72a8 2
+
+D 0x72ba 0x72cc componentes_del_golpe  Parejas con signo que 0x7192 elige con dos bits de la fuerza y uno de azar: las dos componentes con las que la pelota sale despedida
+F 0x72ba 2
+
+L 0x72cc mira_si_esta_en_la_caja  Prueba si el punto (D,E) cae dentro de la caja del punto (B,C). La caja son cuatro bytes -dos limites por eje, con el bit 7 marcando los negativos- que salen de la tabla de 0x730a indexada por A por cuatro. Devuelve el acarreo puesto cuando esta dentro
+C 0x72cc HL = 0x730a, las cajas
+C 0x72d0 por cuatro
+C 0x72d5 la distancia en el primer eje
+C 0x72d8 probada
+C 0x72dc fuera por el primer eje
+C 0x72dd los dos limites del segundo
+C 0x72df la distancia en el segundo eje
+
+L 0x72e1 prueba_un_eje  Con la distancia positiva se compara con los dos limites; con la negativa, se va por el otro lado
+C 0x72e1 negativa: por el otro camino
+C 0x72e4 el limite de arriba, si es positivo
+C 0x72e8 pasada, esta fuera
+C 0x72eb el de abajo
+C 0x72ee por debajo, fuera
+C 0x72f1 dentro
+
+L 0x72f3 esta_fuera  Sin acarreo
+L 0x72f5 prueba_el_lado_negativo  Con la distancia negativa, los limites se leen al reves
+C 0x72f5 el limite de abajo tiene que ser negativo
+C 0x72fa y el de arriba
+C 0x7302 comparado
+
+L 0x7316 el_mando_del_que_defiende  Devuelve en HL el hueco de los bits recien pulsados del jugador que defiende -0xE00E o 0xE011- segun de quien sea el turno
+C 0x7316 (0xE402), de quien es el turno
+
+L 0x731c el_mando_del_que_ataca  Lo mismo pero para el otro, con el acarreo cambiado
+C 0x731c (0xE402)
+C 0x7320 al reves
+
+L 0x7321 elige_el_hueco_del_mando  Con acarreo, el del segundo jugador
+C 0x7321 HL = 0xE00E, los flancos del primero
+C 0x7325 o 0xE011, los del segundo
+
+L 0x7329 ajusta_el_golpe_de_la_maquina  Con un solo jugador y siendo el turno del otro, 0x7ceb decide si el golpe de la maquina se corrige: el angulo se rehace con el registro R y la altura sube 0x38
+C 0x7329 (0xE012), el numero de jugadores
+C 0x732e (0xE402), el turno
+C 0x7333 y lo que diga 0x7ceb
+C 0x7337 el registro de refresco, de dado
+C 0x733c A = 8 de partida
+
+L 0x733e suma_tres_veces  Tres por cada vuelta del dado
+C 0x7342 (0xE037), el angulo nuevo
+C 0x7345 HL = 0xE0A2, la altura
+C 0x7349 0x38 mas
+C 0x734c y el byte alto, si desborda
+
+L 0x7350 mide_donde_da_en_el_bate  La distancia entre la fila de la pelota y el punto del bate, con el desplazamiento que le toca a cada lado -0x10 o 0x02- y el signo cambiado si batea del otro lado. Es lo que decide la fuerza del golpe
+C 0x7350 (0xE131), la fila de la pelota
+C 0x7353 tres mas
+C 0x7356 (0xE144), el punto del bate
+C 0x735a D = 0x10, el desplazamiento de un lado
+C 0x735c (0xE140), su bit 4
+C 0x7363 o 0x02, el del otro
+C 0x7369 la distancia
+C 0x736d el bit 4 otra vez
+C 0x7370 y del otro lado, al reves
+
+D 0x730a 0x7316 cajas_de_contacto  Tres cajas de cuatro bytes -dos limites por eje, con el bit 7 marcando los negativos- que 0x72cc usa para decidir si la pelota entra en el bate. Una por cada lado del bateador, mas otra
+F 0x730a 4
+
+# ======================================================================
+# TANDA 16: los que defienden, y el lanzamiento entre bases
+# ======================================================================
+#
+# Los NUEVE jugadores de campo tienen su ficha de movimiento en 0xE220 y
+# siguientes, de 32 en 32 bytes. La pelota que se lanzan entre ellos vive en
+# 0xE340. 0xE388 es la palabra que manda en toda la defensa: bit 0 hay
+# lanzamiento pedido, bit 1 los jugadores corren, bit 2 la pelota esta
+# bateada, bit 4 la pelota va por el aire de base a base.
+
+L 0x7373 lleva_la_defensa  Los tres bits bajos de 0xE388 mandan: el 0 lleva el lanzamiento entre bases, el 1 mueve a los nueve, y el 2 -la pelota recien bateada- enciende el 1 y los pone a correr
+C 0x7373 HL = 0xE388, la palabra de la defensa
+C 0x7377 el bit 0
+C 0x737a el bit 1
+C 0x737d el bit 2
+C 0x737f el bit 1, encendido
+
+L 0x7384 mueve_a_los_nueve  Un cuadro de movimiento a cada uno de los nueve
+C 0x7384 HL = 0xE220, el primero
+C 0x7387 nueve
+
+L 0x7389 mueve_a_uno_de_los_nueve  Un cuadro, y 32 bytes hasta el siguiente
+C 0x738b un cuadro de movimiento
+C 0x738f la ficha siguiente
+
+L 0x7398 lanza_entre_bases  El que tiene la pelota se la lanza a otro. La direccion pulsada elige la base: bit 0 la tercera, bit 1 la primera, bit 2 la cuarta y bit 3 la segunda, y de la tabla de 0x7676 salen el destino y a quien se le pide que la recoja
+C 0x7398 el bit 4: ya hay una pelota en el aire
+C 0x739d lee el mando del que defiende
+C 0x73a1 sin boton no se lanza
+C 0x73a7 y sin direccion, tampoco
+C 0x73aa ni con las cuatro a la vez
+C 0x73ae (0xE358), la direccion de antes
+C 0x73b1 la misma: no se repite
+C 0x73b4 guardada
+C 0x73b7 C = 3, la tercera base
+C 0x73bc C = 1, la primera
+C 0x73c1 C = 4, la cuarta
+C 0x73c6 y si no, C = 2
+
+L 0x73c8 busca_la_base_de_destino  Entra en la tabla de 0x7676 saltando de siete en siete
+C 0x73c8 HL = la tabla de destinos, un paso antes
+C 0x73cc siete bytes por base
+
+L 0x73cf salta_una_base  Siete bytes
+C 0x73d2 B = el primer byte de la entrada
+C 0x73d3 HL = 0xE200
+C 0x73d6 (0xE38A), quien tiene la pelota
+C 0x73db 32 bytes por ficha
+
+L 0x73de busca_al_que_la_tiene  32 bytes por ficha hasta llegar a la suya
+C 0x73e2 el bit 6 y el bit 7, puestos
+C 0x73e6 y el bit 5, quitado
+C 0x73e8 DE = 0x0220, el paso de partida
+C 0x73eb el bit 3 de su ficha
+C 0x73ef y si no, 0x0120
+
+L 0x73f0 mira_si_ya_esta_en_esa_base  Los bytes 0x1c y 0x1d de la ficha dicen a que bases da; si una de las dos es la pedida, el lanzamiento es mas corto
+C 0x73f1 HL += 0x1c
+C 0x73f7 la primera base a la que da
+C 0x73fa y la segunda
+C 0x73ff DE = 0x0130, el paso corto
+C 0x7404 el bit 3
+C 0x7408 o 0x00c0, mas corto todavia
+
+L 0x740b guarda_el_paso_del_lanzamiento  El paso va a 0xE343, la ficha de la pelota lanzada
+C 0x740b HL = 0xE343
+C 0x7412 HL += 8: la fila del que lanza
+C 0x7418 D = 0x3b, la postura de lanzar
+C 0x741b y 0x39 si el destino esta por encima
+C 0x7422 la postura, guardada
+C 0x7426 el bit 4 de 0xE388: pelota en el aire
+C 0x7428 HL = la tabla, otra vez
+C 0x742b la base pedida
+
+L 0x742c salta_otra_base  Siete bytes por base
+C 0x7432 B = la fila del destino
+C 0x7434 C = la columna
+C 0x7436 A = el numero de base que se apunta
+C 0x7439 HL = 0xE340, la pelota lanzada
+C 0x743e HL += 0x1f
+C 0x7444 ahi se apunta a que base va
+C 0x7446 y se le calcula la trayectoria
+C 0x744a (0xE038): por debajo de 0x20...
+C 0x7451 ...se leen los otros dos bytes de la entrada
+
+L 0x7453 avisa_al_que_la_recoge  De la entrada sale un puntero a la ficha del jugador que tiene que ir a por ella; se le enciende el bit 5 y, si tenia el 7, se le manda ya a por la pelota
+C 0x7453 E = el byte bajo del puntero
+C 0x7455 y el alto
+C 0x7458 su bit 7
+C 0x745a el bit 5, quitado
+C 0x745e su bit 3
+C 0x7464 el bit 5 de 0xE388, quitado
+C 0x7468 o puesto, segun el bit 3
+
+L 0x746a manda_al_receptor  Le calcula el camino y le deja el destino en los bytes 7 y 8 de la pelota
+C 0x746d le busca el sitio
+C 0x7474 el bit 0 de la pelota, quitado
+C 0x7476 y el bit 6
+C 0x747a HL += 7
+C 0x747d la fila del destino
+C 0x747f y la columna
+C 0x7481 el bit 6 del receptor, quitado
+
+L 0x7483 arranca_el_lanzamiento  El bit 5 puesto y el paso de la pelota a 0x0140
+C 0x7483 el bit 5
+C 0x7489 el paso: 0x40 el bajo...
+C 0x748c ...y 1 el alto
+
+L 0x748f apunta_desde_la_ficha  Coge la posicion de ahora de los bytes 7 y 8 de la ficha y le calcula la trayectoria hasta (B,C) sobre el hueco de 16 bytes mas alla
+C 0x7490 IX = la ficha
+C 0x7492 D = la fila de ahora
+C 0x7495 E = la columna
+C 0x749b HL += 0x10, el hueco de la trayectoria
+C 0x74a1 y ahi se calcula
+
+L 0x74a6 lleva_la_pelota_entre_bases  Con el bit 4 de 0xE388 puesto: le da cuadro a las diez fichas de 0xE220 y, a la que se para teniendo el bit 5, le pone la postura de recoger segun de que lado le llegue
+C 0x74a6 B = 10 fichas, C = 0
+C 0x74a9 HL = 0xE220
+
+L 0x74ac lleva_una_ficha_de_campo  El bit 7 se baja y se le da un cuadro
+C 0x74ae el bit 7, fuera
+C 0x74b1 un cuadro de movimiento
+C 0x74b6 el bit 0: sigue en marcha
+C 0x74ba el bit 5: es la que va a por la pelota
+C 0x74be HL += 8: su fila
+C 0x74c3 (0xE348), la fila de la pelota
+C 0x74c7 A = 0x3a, la postura de recoger por arriba
+
+L 0x74cd guarda_la_postura_de_recoger  0x38 si le llega por debajo
+C 0x74cd tres bytes mas alla
+C 0x74d0 la postura
+
+L 0x74d4 y_si_sigue_en_marcha  A la que no es la primera y sigue moviendose, se le rehace el camino
+C 0x74d7 la primera no
+C 0x74da el bit 0: en marcha
+C 0x74de HL += 0x10, el hueco de la trayectoria
+
+L 0x74e6 la_ficha_de_campo_siguiente  32 bytes mas alla
+C 0x74e8 la siguiente
+C 0x74ed HL = 0xE220, otra vez desde el principio
+C 0x74f0 los nueve
+C 0x74f2 32 bytes por ficha
+
+L 0x74f5 busca_al_que_ya_la_tiene  El que tenga el bit 5 y NO el bit 0 -o sea, el que iba a por ella y ya ha llegado- es el que la coge. Si no hay ninguno, 0xE38A se pone a cero
+C 0x74f5 el bit 5
+C 0x74f9 el bit 0: todavia se mueve
+C 0x74fd la ficha siguiente
+C 0x7501 (0xE38A) := 0: no la tiene nadie
+
+L 0x7505 ya_la_tiene_uno  Apunta en 0xE38A quien la ha cogido y, si la pelota sigue en marcha, no se toca mas
+C 0x7505 el numero de la ficha, contando desde el final
+C 0x7509 (0xE38A), quien la tiene
+C 0x750f el bit 0 de la pelota
+
+L 0x7514 mira_a_quien_elimina  De la ficha del que la ha cogido saca a que base apunta y busca al corredor de esa base, para decidir si esta eliminado
+C 0x7517 HL += 0x1f: la base a la que apunta
+C 0x751c B = esa base
+C 0x751d HL = 0xE160
+
+L 0x7520 busca_la_base_apuntada  32 bytes por base
+C 0x7525 (0xE388), su bit 7
+C 0x752c 23 bytes mas alla
+C 0x7531 su bit 0
+C 0x7534 y su bit 1
+
+L 0x7537 cuenta_los_corredores  Recorre las bases hacia atras contando cuantas siguen en marcha, y luego busca en 0xE1A0 la que le toca al que se elimina
+C 0x7539 23 bytes mas alla
+C 0x753c su bit 0, quitado
+C 0x753e 32 bytes por base
+
+L 0x7541 una_base_hacia_atras  Cuenta las que estan en marcha
+C 0x7544 el bit 0
+C 0x7548 una mas
+C 0x754a hasta llegar a 0xE177
+
+L 0x754e busca_al_eliminado  De las bases con corredor, la que hace el numero contado
+C 0x7551 el bit 1: hay corredor
+C 0x7555 una menos
+C 0x7558 la base siguiente
+C 0x755f (0xE40E), las carreras del otro
+C 0x7565 una menos, si habia alguna
+
+L 0x756b decide_si_hay_eliminacion  Segun los bits de la base alcanzada, el aviso de 0xE401 vale 8 -eliminado- o 4
+C 0x756b el bit 1
+C 0x756f el bit 0
+C 0x7574 DE = 9
+C 0x757a el bit 6 nueve bytes antes
+C 0x757f la pelota tiene que estar en juego
+C 0x7584 el bit 3
+C 0x7588 y el bit 5
+
+L 0x758c aviso_de_eliminado  El 8
+C 0x758c A = 8
+
+L 0x7590 avisa_a_la_base_de_atras  Baja el bit 3 y avisa a la de 32 bytes antes
+C 0x7590 el bit 3, fuera
+C 0x7592 32 bytes atras
+
+L 0x759b limpia_la_base  De la base solo sobreviven los bits 7, 6 y 3, y su pareja de 23 bytes se borra
+C 0x759c los bits 7, 6 y 3
+C 0x759f 23 bytes mas alla
+C 0x75a3 borrada
+C 0x75a4 A = 4, el aviso normal
+
+L 0x75a6 guarda_el_aviso  En 0xE401
+L 0x75a9 cierra_el_lanzamiento  Baja el bit 4 de 0xE388, suena el 4 y deja quietas las diez fichas de campo
+C 0x75ac el bit 4, fuera
+C 0x75ae A = 4, el sonido de la recogida
+C 0x75b3 HL = 0xE220
+C 0x75b6 diez fichas
+
+L 0x75b8 para_una_ficha_de_campo  Los bits 0 y 5, quitados
+C 0x75b8 el bit 0
+C 0x75ba y el bit 5
+C 0x75bc la ficha siguiente
+
+L 0x75c1 no_hay_nada_que_hacer  La salida vacia de 0x7398
+L 0x75c2 persigue_la_pelota  Manda a los defensores a por la pelota bateada. Primero el de 0xE300, luego tres seguidos empezando por 0xE240 o por 0xE2A0 -segun a que lado haya salido, que lo dicen 0xE037 y 0xE038-, luego el de 0xE220 y por ultimo el de 0xE320
+C 0x75c2 HL = 0xE300
+C 0x75c8 HL = 0xE240, los de un lado
+C 0x75cb DE = 0xE2A0, los del otro
+C 0x75ce (0xE037), el angulo del golpe
+C 0x75d1 pasado el 0x20 es del otro lado
+C 0x75d5 y entonces se cambian
+C 0x75d6 (0xE038), el sentido
+C 0x75dc con 0xFF, cambiados otra vez
+C 0x75dd tres seguidos
+
+L 0x75df persigue_con_uno  Uno de los tres, y 32 bytes hasta el siguiente
+C 0x75e1 a por ella
+C 0x75e5 la ficha siguiente
+C 0x75eb HL = 0xE220
+C 0x75f1 y HL = 0xE320, el ultimo
+
+D 0x7676 0x7692 destinos_de_los_lanzamientos  Cuatro entradas de siete bytes, una por base: los dos primeros son la esquina a la que va la pelota, el tercero el numero de base que se apunta, y los cuatro ultimos dos punteros a la ficha del jugador que tiene que ir a recogerla, uno por sentido. Los recorren 0x73c8 y 0x742c saltando de siete en siete
+F 0x7676 7
+
+# ======================================================================
+# TANDA 17: recoger la pelota, el marcador y los carteles
+# ======================================================================
+#
+# LOS CONTADORES DE LA PARTIDA, todos juntos en 0xE408:
+#     0xE408  strikes    0xE409  bolas     0xE40A  eliminados
+#     0xE40B  la entrada     0xE40C y 0xE40E  las carreras de cada equipo
+#     0xE402  bit 0 de quien es el turno, bit 6 partido decidido
+#     0xE410 y 0xE420  las dos filas del marcador, doce casillas cada una
+
+L 0x7658 elige_la_postura_del_que_corre  De los bits de direccion de la ficha sale la postura -0x30 o 0x34 de base, mas dos si va hacia arriba- y el contador de cuadros le da la vuelta al bit 0 cada cuatro cuadros, que es el paso
+C 0x7658 los bits de direccion
+C 0x7659 B = 0x34, la postura de un lado
+C 0x765e o 0x30, la del otro
+C 0x7664 dos mas si va hacia arriba
+C 0x7666 cinco bytes atras: la postura
+C 0x766b el contador de cuadros
+C 0x7671 su bit 2, que cambia cada cuatro cuadros
+C 0x7674 y ahi va la postura
+
+L 0x7692 lleva_la_recogida  Las tres partes de recoger la pelota: mirar si alguien la ha alcanzado, decidir si se para, y comprobar si se sale del campo
+C 0x7692 (0xE401), su bit 6: la jugada ya esta resuelta
+C 0x7698 mira si alguien la alcanza
+C 0x769b decide si se para
+C 0x769e y si se sale del campo
+
+L 0x76a1 mira_si_alguien_alcanza_la_pelota  Recorre a los nueve y prueba la caja de contacto de cada uno contra la posicion de la sombra. Solo cuenta si la pelota esta baja -menos de diez pixeles de altura- o ya no vuela
+C 0x76a1 sin pelota en juego, nada
+C 0x76a5 (0xE388), su bit 0: hay lanzamiento
+C 0x76aa C = 0, la altura de partida
+C 0x76ac (0xE039): sin pelota bateada, se salta la altura
+C 0x76b2 (0xE0B4), la fila de la pelota
+C 0x76b6 (0xE0B0), la de la sombra
+C 0x76ba C = la altura
+C 0x76bb por encima de diez pixeles no se coge
+
+L 0x76be mira_quien_puede_cogerla  Con la carrera en marcha o con un solo jugador, hay condiciones de mas
+C 0x76be el contador de carrera
+C 0x76c3 (0xE012), el numero de jugadores
+C 0x76c9 y lo que diga 0x7ceb
+C 0x76cf a dos o a tres pixeles de altura, no se coge
+
+L 0x76d4 prueba_a_los_nueve  Uno por uno, con la caja numero 2
+C 0x76d4 HL = 0xE227, la fila del primero
+C 0x76d7 los nueve
+
+L 0x76d9 prueba_a_uno  Su posicion contra la de la sombra
+C 0x76da BC = (0xE0B0), donde esta la sombra
+C 0x76de E = su fila
+C 0x76e0 D = su columna
+C 0x76e1 A = 2, la caja de recoger
+C 0x76e4 dentro?
+C 0x76eb la ficha siguiente
+
+L 0x76f2 la_coge_este  Apunta en 0xE38A quien la tiene, le pone la postura de recoger -0x3c o 0x3e segun la altura- y cierra la jugada
+C 0x76f2 el numero de ficha, contando desde el final
+C 0x76f6 (0xE38A), quien la tiene
+C 0x76fb el principio de su ficha
+C 0x76fe su bit 3
+C 0x7703 el bit 5 de 0xE388, quitado
+C 0x7707 o puesto
+
+L 0x7709 pone_la_postura_de_recoger  0x3c si la pelota llega alta, 0x3e si llega baja
+C 0x770d B = 0x3c
+C 0x7710 por debajo de cinco de altura...
+C 0x7714 ...la otra postura
+
+L 0x7716 cierra_la_recogida  Guarda la postura, marca la ficha, deja el estado en 8 y apunta la pelota donde se cogio
+C 0x7716 la postura
+C 0x771b el bit 6 de su ficha
+C 0x771d y el bit 7
+C 0x7721 (0xE400) := 8
+C 0x7724 BC = donde esta la sombra
+C 0x772b (0xE347), la columna
+C 0x772d y (0xE348), la fila
+C 0x7732 de 0xE388 solo sobreviven los tres bits altos...
+C 0x7734 ...y se encienden los tres bajos
+C 0x773b (0xE039) := 0: ya no hay pelota bateada
+C 0x7740 (0xE430) := 2
+C 0x7744 y suena el 4
+C 0x7747 el contador de carrera
+C 0x7751 (0xE401), su bit 5
+C 0x7759 (0xE039) := 0
+C 0x775e (0xE400) := 4
+
+L 0x7761 para_a_los_nueve  Les quita el bit 0 a las nueve fichas de campo
+C 0x7761 HL = 0xE220
+C 0x7764 los nueve
+
+L 0x7766 para_a_uno  El bit 0, fuera
+C 0x7766 el bit 0
+C 0x7768 la ficha siguiente
+
+L 0x776e resuelve_al_vuelo  La pelota cogida sin botar: aviso 4, el contador de carrera a 1, se reparten las bases y se enciende el bit 7 de 0xE388
+C 0x776e el aviso de la jugada
+C 0x7773 (0xE401) := 4
+C 0x7779 el bit 3 de la primera base
+C 0x777d (0xE033) := 1
+C 0x7783 (0xE180) := 0
+C 0x7788 las tres bases de detras
+C 0x778a 32 bytes por base
+
+L 0x778d repasa_una_base  A la que tenga corredor pero no este en marcha se le pone el bit 1 de su pareja
+C 0x778f su bit 0
+C 0x7792 y su bit 1
+C 0x7796 23 bytes mas alla
+C 0x7799 su bit 5
+C 0x779d y el bit 1, puesto
+C 0x77a5 el bit 7 de 0xE388
+
+L 0x77a8 decide_si_la_pelota_se_para  Con el bit 2 de 0xE400 y sin el bit 5 de 0xE401: si la pelota bateada esta baja y cerca de la fila 0x78, se da por parada
+C 0x77a8 HL = 0xE400
+C 0x77ab su bit 2
+C 0x77af (0xE401), su bit 5
+C 0x77b2 (0xE039), la pelota bateada
+C 0x77b8 el contador de carrera
+C 0x77bc mide la altura
+C 0x77c1 desde la fila 0x78
+C 0x77c4 por dos
+C 0x77c5 contra la altura
+
+L 0x77c9 y_si_no_esta_bateada  Sin pelota bateada, tambien se para
+C 0x77c9 el contador de carrera
+C 0x77cd la pelota se esconde
+
+L 0x77d0 marca_la_pelota_parada  El bit 5 de 0xE401
+C 0x77d3 el bit 5
+
+L 0x77d6 mira_si_se_sale_del_campo  Compara la columna de la sombra con la valla, que sale de la tabla de 0x7883 en cinco tramos, y con la altura de la pelota: por debajo rebota, por encima es un HOME RUN
+C 0x77d6 HL = 0xE400
+C 0x77d9 su bit 2
+C 0x77dc (0xE038): con 0xFF no hay valla
+C 0x77e1 mide la altura
+C 0x77e4 por debajo de nueve, no cuenta
+C 0x77ea (0xE0B4), la fila de la pelota
+C 0x77ef la distancia
+C 0x77f2 por debajo de la fila 0x78 no hay valla
+C 0x77f5 D = 1, el primer tramo
+C 0x77f7 HL = 0x7883, los tramos de la valla
+C 0x77fb cinco tramos
+
+L 0x77fd busca_el_tramo_de_la_valla  El primero que la columna no pase
+C 0x77fd la columna
+C 0x7800 el tramo siguiente
+C 0x7806 con siete o menos de altura, rebota
+
+L 0x780c mide_la_valla  Del tramo salen la columna y la altura de partida y, saltando de cinco en cinco, se van sumando los dos incrementos hasta pasar de la columna de la pelota
+C 0x780d HL = 0x7883, otra vez
+
+L 0x7810 salta_un_tramo  Cinco bytes por tramo
+C 0x7812 cinco por tramo
+C 0x7819 D = la columna del tramo
+C 0x781b E = su altura
+
+L 0x781d sube_por_la_valla  Los dos incrementos, hasta llegar a la columna de la pelota
+C 0x781e comparada con la de la pelota
+C 0x7821 el incremento de columna...
+C 0x7825 ...y el de altura
+
+L 0x782b compara_con_la_valla  Con la pelota mas baja que la valla, rebota; mas alta, sale del campo
+C 0x782c sin altura, rebota
+C 0x782f por debajo de la valla, rebota
+
+L 0x7834 mira_el_ultimo_tramo  El quinto byte del tramo es el tope de altura
+C 0x7837 el tope
+C 0x7838 por encima, HOME RUN
+
+L 0x783b rebota_en_la_valla  Suena el golpe y la pelota sale disparada al reves: el angulo nuevo es 0x40 menos el que traia, que es el rebote especular
+C 0x783b el aviso del golpe
+C 0x783e A = 0x0a, el sonido del rebote
+C 0x7844 (0xE038) := 0
+C 0x7847 (0xE0A1) := 0
+C 0x784b (0xE039) := 1: sigue bateada
+C 0x784e (0xE03B) := 1
+C 0x7853 (0xE0A2) := 0x60, la altura nueva
+C 0x7856 (0xE037), el angulo de ahora
+C 0x785a 0x40 menos el angulo: el rebote
+C 0x785f guardado
+C 0x7865 (0xE033), un bote mas
+C 0x7866 y a seguir volando
+
+L 0x7869 sale_del_campo  Con carrera en marcha, la pelota sigue en el aire desde la valla; si no, la jugada se cierra y es HOME RUN
+C 0x7869 el contador de carrera
+C 0x786f la altura de la valla
+C 0x7870 la pelota se pone ahi
+
+L 0x7875 cierra_la_jugada_por_home_run  El bit 6 de 0xE401, 0xE388 a cero y todos quietos
+C 0x7878 el bit 6 de 0xE401
+C 0x787b (0xE388) := 0
+
+D 0x7881 0x7883 resto_7881  Dos bytes entre el codigo y la valla; ninguna lectura empieza en ellos
+F 0x7881 2
+
+D 0x7883 0x78a1 la_valla  Cinco tramos de cinco bytes que describen el borde del campo: columna, altura, incremento de columna, incremento de altura y tope. 0x77f7 busca el tramo comparando la columna y 0x781d lo recorre a base de sumar los dos incrementos. Es lo que decide si una pelota rebota o es HOME RUN
+F 0x7883 5
+
+L 0x78a1 avisa_del_golpe  Calla el efecto y suena el 0x9a
+C 0x78a2 (0xE650) := 0
+C 0x78a5 A = 0x9a
+
+L 0x78a7 suena_ya  Pide el sonido y le da un cuadro en el acto, sin esperar a la interrupcion
+C 0x78a7 el sonido
+C 0x78ab y un cuadro de motor, ya
+
+L 0x78b1 mide_la_altura  La distancia entre la fila de la sombra y la de la pelota, corrida cuatro pixeles, siempre en positivo
+C 0x78b1 BC = las dos filas
+C 0x78b5 cuatro pixeles de correccion
+C 0x78ba el signo
+C 0x78bd y siempre en positivo
+
+D 0x7c20 0x7c35 carteles  Siete entradas de tres bytes: el puntero al texto de siete tiles y el sonido que lo acompana. 0x7bcb entra aqui con el numero de cartel. Leidos con la fuente del cartucho son STRIKE, BALL, OUT, SAFE, CHANGE, FOUL y "4 BALL" -la base por bolas, con el tile 0xF4 del cuatro delante-
+F 0x7c20 3
+
+D 0x7c35 0x7c66 textos_de_los_carteles  Los siete textos, siete tiles cada uno, con los blancos que los centran
+F 0x7c35 7
+
+D 0x7c66 0x7c70 marco_del_cartel  Diez tiles que tapan el hueco del cartel cuando no hay nada que decir
+F 0x7c66 10
+
+D 0x7c70 0x7c7a home_run  Los diez tiles de HOME RUN, que van al mismo hueco que el marco
+F 0x7c70 10
+
+L 0x7bb0 un_cuadro_de_partido  El cuerpo del partido, partido en dos mitades que se turnan cuadro a cuadro: en los pares la pelota bateada, el lanzamiento y los corredores; en los impares la defensa, el bateador, la recogida y la maquina
+C 0x7bb0 el contador de cuadros
+C 0x7bb3 su bit 0 decide la mitad
+C 0x7bb6 la pelota bateada
+C 0x7bb9 el lanzamiento
+C 0x7bbc y los corredores
+
+L 0x7bbf la_otra_mitad_del_cuadro  Los cuadros impares
+C 0x7bbf la defensa
+C 0x7bc2 el bateador
+C 0x7bc5 la recogida
+C 0x7bc8 y la maquina
+
+L 0x7bcb ensena_un_cartel  Saca el cartel numero A: copia sus siete tiles al hueco de la pantalla, pide su sonido y arranca el plazo de 0x40 cuadros de 0xE40D. OJO: el `ld de,L_7AB9` del listado NO es un salto, es la direccion de VRAM 0x7ab9 -que el desensamblador ha bautizado con el nombre de la rutina que vive en esa direccion de ROM-
+C 0x7bcc (0xE40D) := 0x40, el plazo del cartel
+C 0x7bd2 HL = la tabla de carteles, un paso antes
+
+L 0x7bd5 salta_un_cartel  Tres bytes por cartel
+C 0x7bda el puntero al texto
+C 0x7bdf DE = VRAM 0x7ab9, el hueco del cartel
+C 0x7be2 siete tiles
+C 0x7be9 y el sonido que le toca
+
+L 0x7bed quita_el_cartel  Cuando el plazo se agota y el sonido ha callado, borra los siete tiles y repinta los tres contadores
+C 0x7bed (0xE663), la marca del motor de sonido
+C 0x7bf5 un cuadro menos de plazo
+C 0x7bf7 DE = VRAM 0x7ab9
+C 0x7bfa siete tiles a cero
+
+L 0x7c00 pinta_los_contadores  Las tres filas de strikes, bolas y eliminados: por cada contador, tantos tiles 0x97 como lleve, y si esta a cero, tres huecos
+C 0x7c00 HL = 0xE408, los tres contadores
+C 0x7c03 DE = VRAM 0x7a62, la primera fila
+C 0x7c06 tres contadores
+
+L 0x7c08 pinta_un_contador  Tantas marcas como diga el contador
+C 0x7c09 B = lo que lleva
+C 0x7c0a C = 0x97, la marca
+C 0x7c10 a cero, tres huecos
+
+L 0x7c13 escribe_las_marcas  Y la fila siguiente
+C 0x7c13 las marcas
+C 0x7c18 32 columnas: la fila de abajo
+
+L 0x7c1d otro_contador  Hasta los tres
+
+# ======================================================================
+# TANDA 18: la maquina, el marcador y lo que quedaba suelto
+# ======================================================================
+#
+# LA MAQUINA JUEGA ESCRIBIENDO EN EL HUECO DEL MANDO. No hay una via aparte:
+# 0x7d04 y las suyas calculan que haria un jugador y lo dejan escrito en
+# 0xE011, que es el mismo byte donde 0x43e2 pone los bits recien pulsados del
+# segundo jugador. Lo mismo hace 0x7fce con 0xE00E para la demostracion del
+# menu. De ahi que el resto del cartucho no sepa -ni le importe- si le esta
+# jugando una persona o el cartucho.
+
+L 0x4f4d cierra_la_jugada_por_tiempo  Sin el bit 4 de 0xE388 y con la pelota devuelta por encima de la columna 0xC0, la jugada se da por cerrada: se borra 0xE388, el estado vuelve a 2 y se enciende el bit 3 de 0xE380
+C 0x4f4d (0xE388), su bit 4
+C 0x4f54 (0xE347), la columna de la pelota devuelta
+C 0x4f57 pasada la 0xC0
+C 0x4f5c (0xE388) := 0
+C 0x4f61 (0xE400) := 2
+C 0x4f67 el bit 3 de 0xE380
+C 0x4f69 (0xE402), de quien es el turno
+C 0x4f71 (0xE430) := 8, el estado de la maquina
+
+L 0x6e52 apaga_el_efecto  Pasado el 0x8F, el efecto se corta
+C 0x6e53 el tope, 0x8F
+C 0x6e59 a cero
+
+L 0x6e5c baja_el_efecto  Ocho unidades menos
+C 0x6e5e ocho menos
+C 0x6e64 y el byte de al lado, si desborda
+
+L 0x6e67 corre_la_tabla_del_efecto  Cuatro bytes hacia atras con lddr, que es como el efecto avanza por su tabla
+C 0x6e69 cuatro bytes
+C 0x6e6c copiados hacia atras
+
+L 0x75f4 manda_a_uno_a_por_la_pelota  Le calcula a la ficha el camino hasta donde va a caer la pelota. Con el contador de carrera a cero y sin rebote se apunta al punto de caida de 0xE0B8, corrigiendolo por el angulo; si no, se va derecho a donde esta la sombra
+C 0x75f5 IX = la ficha
+C 0x75f7 (0xE033), el contador de carrera
+C 0x75fb BC = (0xE0B0), donde esta la sombra
+C 0x7601 BC = (0xE0B8), donde va a caer
+C 0x7605 (0xE038), el sentido
+C 0x760b (0xE037), el angulo
+C 0x760e por debajo de 0x20 va por el otro camino
+C 0x7612 entre 0x20 y 0x25 no se corrige
+C 0x7616 el signo de la fila
+C 0x761a y si no, se pega al borde
+
+L 0x761e corrige_por_el_otro_lado  Lo mismo con el angulo del otro lado
+C 0x761e por encima de 0x1a no se corrige
+C 0x7622 el signo de la fila
+C 0x7626 y si no, al otro borde
+
+L 0x7628 mira_si_le_pilla_cerca  Si la pelota le cae a mas de 0x20 por delante o a mas de 0x48 por detras, este no va
+C 0x7628 su fila
+C 0x762b contra la de la caida
+C 0x762e mas de 0x20 por delante: no le da tiempo
+C 0x7633 ni mas de 0x48 por detras
+
+L 0x7636 recorta_la_llegada  Cinco pixeles menos por cada eje: se para justo antes, no encima
+C 0x7637 cinco menos
+
+L 0x763c recorta_el_otro_eje  Y cinco menos en el otro
+C 0x763d cinco menos
+
+L 0x7642 le_calcula_el_camino  Cambia B con C -la trayectoria los quiere al reves- y calcula
+C 0x7642 B y C, cambiados
+C 0x7645 D = su fila de ahora
+C 0x7648 E = su columna
+C 0x764e HL += 0x10, el hueco de la trayectoria
+C 0x7654 y ahi se calcula
+
+L 0x78c0 lleva_los_contadores  El cuadro de contabilidad de la partida. Si 0xE38B esta puesto se borran los dos mandos, se quita el cartel si toca, se repinta la inicial del equipo que batea, y luego los cuatro bits bajos de 0xE400 eligen que parte de la jugada se resuelve
+C 0x78c0 (0xE38B): la partida esta en pausa
+C 0x78c7 los dos mandos, borrados
+C 0x78ca el del segundo tambien
+
+L 0x78cd reparte_el_estado_de_la_jugada  Los bits de 0xE400: el 0 el fin de entrada, el 1 el lanzamiento, el 2 la pelota bateada y el 3 la resolucion
+C 0x78cd (0xE40D): con plazo de cartel, se le da un cuadro
+C 0x78d4 repinta la inicial del equipo que batea
+C 0x78d7 HL = 0xE400
+C 0x78db el bit 0
+C 0x78df el bit 1
+C 0x78e3 el bit 2
+C 0x78e7 y el bit 3
+
+L 0x78ea resuelve_la_jugada  El aviso de 0xE401 dice que ha pasado: con el bit 6 hay eliminacion, con el 3 sale el cartel 3, con el 2 se cuentan los eliminados -y al tercero se cambia de entrada- y si no, se deja correr el plazo
+C 0x78ea el aviso de la jugada
+C 0x78eb su bit 6
+C 0x78f0 gastado
+C 0x78f2 el bit 3
+C 0x78f6 el bit 2
+C 0x78fa las cuatro bases
+C 0x78ff repartidas
+C 0x7905 (0xE40A), un eliminado mas
+C 0x7907 al tercero se cambia de entrada
+C 0x7909 A = 2, el cartel de OUT
+
+L 0x790d cambia_de_entrada  Tres eliminados: se borra 0xE380, el estado vuelve a 1 y sale el cartel de CHANGE
+C 0x790e (0xE380) := 0
+C 0x7915 (0xE400) := 1
+C 0x7917 (0xE401) := 0x10
+C 0x791a y el cartel 4, el de CHANGE
+
+L 0x791d cartel_de_safe  El cartel 3
+C 0x791d A = 3, el de SAFE
+
+L 0x791f saca_el_cartel  Y se dibuja
+L 0x7922 y_a_seguir  Vuelve al cuerpo del partido
+L 0x7925 deja_correr_el_plazo  Sin nada que resolver, se deja correr el contador de 0xE403; a los 0x80 cuadros la jugada se cierra sola y se apuntan las carreras
+C 0x7925 apunta las carreras
+C 0x792b un cuadro mas
+C 0x792c a los 0x80
+C 0x7932 el contador, a cero
+C 0x7936 (0xE401) := 0
+C 0x7939 (0xE400) := 1
+C 0x793a el contador de carrera
+C 0x7940 HL = 0xE40E, las carreras del otro
+
+L 0x7945 apunta_las_carreras  Con dos eliminados y la primera base ocupada no se apunta nada; si no, se cuentan las de 0xE40C
+C 0x7946 (0xE40A), los eliminados
+C 0x7949 dos
+C 0x794d (0xE180), su bit 1
+C 0x7953 HL = 0xE40C, las carreras de este
+
+L 0x7956 suma_las_carreras  Si el contador trae algo, se le suma al marcador y se vuelca a la pantalla
+C 0x7956 lo que hay que apuntar
+C 0x7959 gastado
+
+L 0x795c escribe_el_marcador  Suma B carreras a la casilla de la entrada que toque y al total, las dos en cifras BCD de un digito, y vuelca las doce casillas de la fila a la pantalla
+C 0x795c HL = 0xE410, la fila de un equipo
+C 0x795f DE = VRAM 0x782b, donde va
+
+L 0x796d elige_la_fila_del_marcador  Segun de quien sea el turno, la de 0xE420 y la fila 0x784b
+C 0x796e (0xE40B), la entrada
+C 0x7974 la casilla de esa entrada
+C 0x7975 mas las carreras
+C 0x7976 convertida en tile de cifra
+C 0x7978 pasada del 9...
+C 0x797c ...se le quitan diez
+
+L 0x797e guarda_la_casilla  La casilla de la entrada, y ahora el total
+C 0x797e la casilla
+C 0x7981 HL += 11: el total
+C 0x7987 mas las carreras
+C 0x7988 en tile de cifra
+C 0x798e pasado del 9, acarreo a las decenas
+C 0x7992 la cifra de las decenas
+C 0x7993 una mas
+C 0x7996 y si tambien se pasa...
+C 0x799a ...se queda en 99
+
+L 0x799d guarda_las_decenas  Las decenas, y detras las unidades
+C 0x799d las decenas
+
+L 0x79a0 vuelca_la_fila  Las doce casillas de la fila, a la pantalla; y en la novena entrada se mira si el partido esta decidido
+C 0x79a0 las unidades
+C 0x79a2 doce casillas
+C 0x79a7 (0xE40B), la entrada
+C 0x79aa la octava
+C 0x79ad (0xE402), el turno
+C 0x79b2 mira si hay empate
+C 0x79b8 (0xE402) := 0x80: partido acabado
+
+L 0x79bc acaba_la_entrada  Suena el aviso, se marca 0xE389, y se cuenta cuantas bases quedan ocupadas: si no queda ninguna, se borra el hueco del rotulo y suena el 0x97
+C 0x79bc (0xE663), la marca del motor de sonido
+C 0x79c2 A = 0x8e, el aviso
+C 0x79ca el bit 2 de 0xE389
+C 0x79ce (0xE033) := 1
+C 0x79d1 B = 4 bases, C = 0
+C 0x79d4 HL = 0xE180
+
+L 0x79d7 cuenta_una_base  Con los dos bits bajos, una ocupada mas
+C 0x79d8 los dos bits bajos
+C 0x79dc una mas
+
+L 0x79dd manda_a_los_de_base  A los que estan en base y no corren, se les da la orden de correr
+C 0x79dd el bit 1: hay corredor
+C 0x79e1 el bit 0: ya corre
+C 0x79e5 el bit 2: la orden
+C 0x79e7 y el bit 4, fuera
+
+L 0x79e9 la_base_siguiente_del_recuento  32 bytes mas alla, y si no quedaba ninguna se cierra
+C 0x79e9 la base siguiente
+C 0x79f2 (0xE401) := 0
+C 0x79f8 DE = VRAM 0x4068
+C 0x79fb 0xB0 tiles de relleno
+C 0x79ff borrados
+C 0x7a02 y suena el 0x97
+
+L 0x7a09 parpadea_el_rotulo  Con bases ocupadas, el color del rotulo cambia con los bits 4 y 5 del contador de cuadros: cuatro colores que se van turnando
+C 0x7a09 el contador de cuadros
+C 0x7a0c sus bits 4 y 5
+C 0x7a12 los dos puestos: 0xF0
+
+L 0x7a14 el_segundo_color  El 0xA0
+C 0x7a18 0xA0
+
+L 0x7a1a el_tercer_color  El 0x70
+C 0x7a1e 0x70
+
+L 0x7a20 el_cuarto_color  El 0x90
+C 0x7a23 0x90
+
+L 0x7a25 pinta_el_rotulo  Al color se le suma el 4 y, cada dieciseis cuadros, se repinta el fondo entero
+C 0x7a26 el 4 de la tinta
+C 0x7a29 el contador de cuadros
+C 0x7a2c uno de cada dieciseis
+C 0x7a30 DE = VRAM 0x4068
+C 0x7a33 0xB0 tiles
+
+L 0x7a38 elige_el_texto  El bit 5 del contador alterna entre HOME RUN y el marco vacio
+C 0x7a38 el contador de cuadros
+C 0x7a3b HL = 0x7c70, HOME RUN
+C 0x7a3e su bit 5
+
+L 0x7a42 el_marco_vacio  El de 0x7c66
+C 0x7a42 HL = 0x7c66, el marco
+C 0x7a45 DE = VRAM 0x786b
+C 0x7a48 diez tiles
+
+L 0x7a4d vuelve_al_partido  Y a seguir
+L 0x7a50 resuelve_el_lanzamiento  El estado 4: con el bit 2 se resuelve como jugada, con el 6 se pasa a la siguiente y con el 5 se cierra el turno del bateador
+C 0x7a51 el bit 2
+C 0x7a56 el bit 6
+C 0x7a5a el bit 5
+C 0x7a5e (0xE039), la pelota bateada
+
+L 0x7a62 cierra_el_turno  Deja el estado en 1 y reparte a los corredores segun las cuatro marcas de 0xE197
+C 0x7a64 el aviso, a cero
+C 0x7a66 (0xE400) := 1
+C 0x7a68 HL = 0xE180, las bases
+C 0x7a6b DE = 0xE197, las marcas
+C 0x7a6e cuatro
+
+L 0x7a70 reparte_una_marca  El bit 0 de la marca decide si la base queda ocupada
+C 0x7a70 la marca
+C 0x7a72 el bit 1, puesto
+C 0x7a76 o quitado, y el 5 tambien
+
+L 0x7a7a la_base_y_la_marca_siguientes  32 bytes cada una
+C 0x7a7a la base siguiente
+C 0x7a7e y la marca siguiente
+C 0x7a85 el aviso de sonido
+C 0x7a89 A = 5, el cartel de FOUL
+C 0x7a8e (0xE408), los strikes
+C 0x7a92 con dos ya no sube mas
+C 0x7a95 y si no, uno mas
+
+L 0x7a97 resuelve_el_golpe  El estado 8: el marcador a 2, se le da la vuelta a la semilla de azar y suena el 0x8c
+C 0x7a98 (0xE400) := 8
+C 0x7a9c (0xE380) := 2
+C 0x7a9f HL = 0xE445, la primera semilla
+C 0x7aa2 (0xE402), el turno
+
+L 0x7aab gira_la_semilla  La semilla, rotada un bit
+C 0x7aac rotada
+C 0x7aae la pelota, escondida
+C 0x7ab4 A = 0x8c, el sonido
+
+L 0x7ab9 monta_el_lanzamiento_siguiente  El estado 2: en cuanto se agota el plazo de 0xE001, el lanzador se enciende y su contador sube
+C 0x7ab9 (0xE100), su bit 0
+C 0x7abf (0xE001), el plazo
+C 0x7ac4 (0xE430) := 8, el estado de la maquina
+C 0x7acd el bit 0 del lanzador
+C 0x7acf y el bit 6
+C 0x7ad3 su contador, uno mas
+
+L 0x7ad5 cuenta_strike_o_bola  Del aviso de 0xE401 sale que se apunta: el bit 0 una bola y el bit 1 un strike. Al tercer strike el bateador esta eliminado y a la cuarta bola hay base por bolas
+C 0x7ad6 el aviso
+C 0x7ad7 el bit 0: bola
+C 0x7ada el bit 1: strike
+C 0x7ade el aviso, gastado
+C 0x7ae0 (0xE408), los strikes
+C 0x7ae3 uno mas
+C 0x7ae6 al tercero
+C 0x7aee (0xE40A), un eliminado mas
+C 0x7af0 y al tercero, cambio de entrada
+C 0x7af5 A = 2, el cartel de OUT
+
+L 0x7af9 cartel_de_strike  El cartel 0
+C 0x7af9 A = 0, el de STRIKE
+
+L 0x7afb saca_el_cartel_que_toque  Y se dibuja
+L 0x7afd cuenta_una_bola  La cuarta bola es base por bolas: la partida se para, el bateador se recoge y sale el cartel de "4 BALL"
+C 0x7afd el aviso, gastado
+C 0x7aff (0xE409), las bolas
+C 0x7b02 una mas
+C 0x7b04 a la cuarta
+C 0x7b0a (0xE38B) := 1: la partida, en pausa
+C 0x7b13 (0xE400) := 8
+C 0x7b16 (0xE401) := 0x80
+C 0x7b1b el bit 5 del bateador
+C 0x7b1d y se le recoge
+C 0x7b24 de 0xE100 solo sobreviven los bits 0, 6 y 7
+C 0x7b27 A = 6, el cartel de "4 BALL"
+
+L 0x7b2b cartel_de_bola  El cartel 1
+C 0x7b2b A = 1, el de BALL
+
+L 0x7b2d dibuja_y_cierra  Saca el cartel y baja el bit 0 de 0xE380
+C 0x7b2d el cartel
+C 0x7b33 el bit 0 de 0xE380
+
+L 0x7b36 cambia_el_turno  El estado 1: repinta el marcador, borra strikes, bolas, eliminados y carreras, le da la vuelta al bit 0 de 0xE402 y, si el que acaba es el segundo, sube la entrada. A las nueve entradas el partido se acaba
+C 0x7b36 (0xE40D): con cartel en pantalla, se espera
+C 0x7b3e (0xE401), su bit 4
+C 0x7b42 gastado
+C 0x7b46 vuelca el marcador
+C 0x7b49 y repinta las iniciales
+C 0x7b4f (0xE408) := 0, los strikes
+C 0x7b52 (0xE409) := 0, las bolas
+C 0x7b54 (0xE40A) := 0, los eliminados
+C 0x7b55 (0xE40C) := 0
+C 0x7b58 (0xE40E) := 0
+C 0x7b5c (0xE002): en la demostracion el turno no cambia
+C 0x7b63 el bit 0 de 0xE402, del reves
+C 0x7b6a HL = 0xE40B, la entrada
+C 0x7b6f una entrada mas
+C 0x7b71 a la novena se acaba
+
+L 0x7b75 acaba_el_partido  (0xE402) := 0x80, que es lo que mira el bucle de fuera
+C 0x7b78 (0xE402) := 0x80
+
+L 0x7b7b mira_si_hay_prorroga  En la octava, si el marcador esta empatado, se pinta un 0xE7 en la casilla y el partido sigue
+C 0x7b7c la octava entrada
+C 0x7b80 mira si hay empate
+C 0x7b87 (0xE428) := 0xe7
+
+L 0x7b8c limpia_las_bases  Las cuatro bases a cero, los sprites escondidos y del lanzador solo sobrevive el bit 4
+C 0x7b8c HL = 0xE180
+C 0x7b8f las cuatro
+
+L 0x7b91 borra_una_base  A cero
+C 0x7b91 a cero
+C 0x7b93 la siguiente
+C 0x7b98 y los sprites, fuera
+C 0x7b9f de 0xE100 solo sobrevive el bit 4
+C 0x7ba2 A = 4, el cartel de CHANGE
+
+L 0x7ba8 empieza_la_jugada_siguiente  Estado 2 y a montar la jugada
+C 0x7ba8 (0xE400) := 2
+
+L 0x7c7a esconde_la_pelota  Borra la pelota lanzada y la bateada y manda los dos sprites -el primero y el ultimo- a la fila 0xCF
+C 0x7c7b (0xE340) := 0
+C 0x7c7e (0xE039) := 0
+C 0x7c81 DE = VRAM 0x7b00, el primer sprite
+
+L 0x7c89 esconde_un_sprite  La fila 0xCF, la de esconder
+C 0x7c8c 0xCF
+
+L 0x7c91 repinta_la_inicial  Cada 16 cuadros hace parpadear la inicial del equipo que batea, escribiendo el tile o un cero
+C 0x7c91 HL = las iniciales de la Central
+C 0x7c94 (0xE440), la liga
+C 0x7c9a o las de la Pacific
+
+L 0x7c9d elige_el_hueco_de_la_inicial  Segun el turno, el hueco de uno o el del otro
+C 0x7c9d DE = VRAM 0x7829
+C 0x7ca0 (0xE402), el turno
+C 0x7ca4 (0xE441), el equipo del primero
+C 0x7ca9 o (0xE442), el del segundo
+C 0x7cac y su hueco
+
+L 0x7cae parpadea_la_inicial  El bit 4 del contador de cuadros decide si se ve o no
+C 0x7cae solo el numero de equipo
+C 0x7cb3 C = 0, o sea borrado
+C 0x7cb5 el contador de cuadros
+C 0x7cb8 su bit 4
+C 0x7cbc y entonces, la inicial
+
+L 0x7cc3 limpia_si_toca  Solo limpia si HL acaba en 0x80
+C 0x7cc3 el byte bajo de HL
+C 0x7cc4 tiene que ser 0x80
+
+L 0x7cc7 limpia_la_cuenta  Pone strikes y bolas a cero, gira el codigo del equipo que batea y repinta los tres contadores
+C 0x7cc8 HL = 0xE408
+C 0x7ccc los strikes, a cero
+C 0x7cce y las bolas
+C 0x7ccf HL = 0xE443, el equipo del primero
+C 0x7cd2 (0xE402), el turno
+
+L 0x7cdb gira_el_bateador  A cero, se rehacen los codigos de equipo; luego el codigo se desplaza un bit, que es como va rotando el orden de bateo
+C 0x7cdb el codigo de equipo
+C 0x7cdd a cero, se rehacen
+C 0x7ce0 desplazado un bit
+C 0x7ce4 y los contadores, repintados
+
+L 0x7ceb mira_si_hay_empate  Compara las dos casillas de total de los dos equipos -0xE41A y 0xE42A, con sus dos cifras- y devuelve el acarreo puesto cuando son iguales
+C 0x7ceb HL = 0xE41A, el total de uno
+C 0x7cee DE = 0xE42A, el del otro
+C 0x7cf2 la primera cifra
+
+L 0x7cf6 la_segunda_cifra_del_total  Las decenas
+C 0x7cf9 iguales?
+
+L 0x7cfd hay_empate  Acarreo puesto y el bit 6 de 0xE402
+C 0x7cfd acarreo: empate
+C 0x7d01 el bit 6 de 0xE402
+
+L 0x7d04 juega_la_maquina  El cerebro del rival. Solo corre con un jugador. Segun el turno se ocupa de batear (0x7e8f) o de defender, y en este caso los bits de 0xE430 eligen: el 1 correr las bases, el 2 lanzar la pelota entre bases, el 3 elegir el lanzamiento y el 4 soltarlo
+C 0x7d04 (0xE012), el numero de jugadores
+C 0x7d0a (0xE011) := 0: el mando de la maquina, limpio
+C 0x7d0d (0xE402), el turno
+C 0x7d11 con el turno del otro, a batear
+C 0x7d14 HL = 0xE430, el estado de la maquina
+C 0x7d18 el bit 1
+C 0x7d1d el bit 2
+C 0x7d21 el bit 3
+C 0x7d23 y el bit 4
+C 0x7d26 (0xE380), su bit 1: hay carrera
+C 0x7d2e (0xE100), su bit 3
+
+L 0x7d49 elige_el_lanzamiento  De la tabla de 0x7f78 o de 0x7f98 -segun de que lado lance- saca un byte con los cuatro datos del lanzamiento: el nibble alto va a 0xE364 y del bajo salen los dos bits de velocidad y los dos de efecto
+C 0x7d49 el indice de ahora
+C 0x7d4a uno mas para la vez siguiente
+C 0x7d4d HL = 0x7f78, una de las dos tablas
+C 0x7d50 (0xE100), su bit 4
+C 0x7d57 o la de 0x7f98
+
+L 0x7d5a reparte_el_lanzamiento  El nibble alto a 0xE364, y los dos pares de bits del bajo a 0xE363 y 0xE365
+C 0x7d5b el byte que toca
+C 0x7d60 B se lo queda entero
+C 0x7d61 el nibble alto
+C 0x7d65 a (0xE364)
+C 0x7d66 el registro de refresco, de dado
+
+L 0x7d6f guarda_el_efecto  Con el dado a cero, un 0x10
+C 0x7d70 el efecto
+C 0x7d72 los dos bits bajos
+C 0x7d76 a (0xE366)
+C 0x7d7a los dos siguientes
+C 0x7d7e a (0xE368)
+C 0x7d82 el bit 4 de 0xE430: ya esta elegido
+
+L 0x7d85 suelta_el_lanzamiento  Espera a que el contador de 0xE365 llegue a cero teniendo el nibble alto de 0xE364, y entonces mete un 0x10 en el mando de la maquina: eso es pulsar el boton
+C 0x7d85 (0xE380), su bit 1
+C 0x7d8f (0xE364), el nibble alto
+C 0x7d94 tiene que coincidir
+C 0x7d97 un cuadro menos
+C 0x7d99 (0xE011) := 0x10: boton pulsado
+C 0x7da1 (0xE430) := 4
+
+L 0x7da4 vuelve_al_estado_2  Con carrera en marcha, la maquina se pone en el estado 2
+C 0x7da7 (0xE430) := 2
+
+L 0x7daa apunta_a_la_base  Compara la columna de la pelota con la casilla que le toca y, si ya la ha pasado, manda la direccion de esa base al mando de la maquina
+C 0x7daa HL += 6
+C 0x7daf a cero no hay nada que hacer
+C 0x7db5 (0xE130), la columna de la pelota
+C 0x7db8 corrida 0x18
+C 0x7dba los dos bits que interesan
+C 0x7dbc bajados a la derecha
+C 0x7dc0 contra la casilla
+C 0x7dc3 la direccion, por cuatro
+
+L 0x7dc9 elige_a_donde_lanzar  De los bits de 0xE388 sale a que base conviene lanzar: la primera si esta ocupada y hay dos eliminados, y si no, la que decida el recorrido de las cuatro
+C 0x7dc9 (0xE388)
+C 0x7dcd su bit 0
+C 0x7dd0 y su bit 3
+
+L 0x7dd3 mira_si_hay_que_esperar  Con el bit 7 de 0xE388 se va por otro camino; y si ya se decidio, tambien
+C 0x7dd3 el bit 7
+C 0x7dd8 el bit 5: ya esta decidido
+C 0x7ddc que queda puesto
+C 0x7ddf el bit 5 de 0xE388
+C 0x7de1 C = 1, la primera base
+C 0x7de5 (0xE180), su bit 1
+C 0x7dec C = 8, la cuarta
+C 0x7dee (0xE40A), los eliminados
+C 0x7df1 dos
+
+L 0x7df5 pone_el_boton  Al numero de base se le suma el bit 4, que es el boton
+C 0x7df5 el bit 4: boton
+
+L 0x7df8 manda_la_orden  Y al mando de la maquina
+L 0x7dfa busca_al_corredor_mas_adelantado  Recorre las cuatro bases y, de los que estan corriendo, se queda con el que va mas adelantado por cada sentido; el bit 5 de 0xE388 decide cual de los dos manda
+C 0x7dfa (0xE1E0), su bit 0
+C 0x7dfe A = 0x12 si la cuarta ya corre
+C 0x7e02 DE = 0, los dos candidatos
+C 0x7e05 HL = 0xE180
+C 0x7e08 las cuatro
+
+L 0x7e0a mira_a_un_corredor  Solo cuentan los que tienen corredor y estan en marcha
+C 0x7e0c IX = la base
+C 0x7e0e el bit 1: hay corredor
+C 0x7e12 el bit 0: en marcha
+C 0x7e16 el byte 0x18, la base a la que va
+C 0x7e19 comparada con donde esta
+C 0x7e21 el candidato de un sentido
+
+L 0x7e27 mira_el_otro_sentido  Con el byte 0x19, el del otro
+C 0x7e27 el byte 0x19
+C 0x7e2a comparado
+C 0x7e32 el candidato del otro sentido
+
+L 0x7e38 la_base_siguiente_del_repaso  32 bytes mas alla
+C 0x7e38 la siguiente
+C 0x7e3e (0xE388), su bit 5
+C 0x7e43 D, el candidato de un sentido
+C 0x7e46 o E, el del otro
+
+L 0x7e47 elige_al_candidato  Si el elegido no vale, se prueban los otros dos, y si tampoco, la primera base
+C 0x7e48 vale
+C 0x7e4a D
+C 0x7e4e E
+C 0x7e52 (0xE180), su bit 0
+C 0x7e58 C = 1, la primera base
+
+L 0x7e5a traduce_la_base  De 1 a 4, el bit de direccion que le corresponde: 2, 4, 1 y 8
+C 0x7e5a C = 2
+C 0x7e5f C = 4
+C 0x7e64 C = 1
+C 0x7e69 y C = 8
+
+L 0x7e6b pone_el_boton_tambien  El bit 4 encima
+C 0x7e6b el bit 4: boton
+
+L 0x7e6e y_a_mandarlo  Al mando de la maquina
+L 0x7e71 busca_al_que_esta_a_medias  Con el bit 7 de 0xE388, busca en 0xE1B7 la base con corredor pero parada
+C 0x7e71 el bit 5, puesto
+C 0x7e73 HL = 0xE1B7
+C 0x7e76 tres
+
+L 0x7e78 mira_una_de_las_tres  Con el bit 0 a cero o el bit 1 puesto, es esta
+C 0x7e78 el bit 0
+C 0x7e7c el bit 1
+C 0x7e80 la siguiente
+C 0x7e88 y si no hay ninguna, el bit 7 se cae
+
+L 0x7e8b esa_es  El numero de base, mas uno
+C 0x7e8c el numero de base
+
+L 0x7e8f batea_la_maquina  El otro lado del cerebro: cuando le toca batear. Con la pelota en juego decide si le da y con que punto del bate; sin ella, mueve a los corredores
+C 0x7e8f la pelota en juego
+C 0x7e95 HL = 0xE100, el lanzador
+C 0x7e99 su bit 0
+C 0x7e9b su bit 1
+C 0x7e9e y su bit 2
+C 0x7ea1 el registro de refresco, de dado
+C 0x7ea3 una de cada dieciseis
+C 0x7ea7 (0xE362), la cuenta
+C 0x7ead (0xE1A0), su bit 1
+C 0x7eb4 (0xE1E0), su bit 1
+C 0x7ebb A = 0x12: robar base
+
+L 0x7ec0 decide_si_batear  Solo se batea cuando la pelota esta entre las columnas 0x87 y 0xBA, y solo cuando llega al punto que da la velocidad de 0xE363
+C 0x7ec0 el bit 2 del lanzador
+C 0x7ec3 (0xE130), la columna de la pelota
+C 0x7ec6 antes de la 0x87, todavia no
+C 0x7ec9 y pasada la 0xBA, ya no
+C 0x7ecc (0xE363), la velocidad
+C 0x7ed1 A = 0xa0 de partida
+
+L 0x7ed3 calcula_el_punto_de_golpeo  Dos menos por cada punto de velocidad: cuanto mas rapido llega la pelota, antes hay que empezar el bate
+C 0x7ed3 dos menos
+C 0x7ed7 contra la columna de la pelota
+C 0x7edb C = 0x10, el boton
+C 0x7ede todavia no ha llegado
+
+L 0x7ee9 mira_si_la_pelota_va_alta  Con la jugada avanzada o la pelota lejos del centro, no se batea
+C 0x7ee9 la distancia, a la sombra
+C 0x7eea (0xE142), los tres bits bajos
+C 0x7eef de dos en adelante, se batea igual
+C 0x7ef4 y si no, a menos de 0x7c del centro
+
+L 0x7ef9 mueve_el_bate  Antes de llegar, la maquina coloca el bate arriba o abajo segun donde vaya a caer la pelota
+C 0x7ef9 C = 0, sin boton
+C 0x7efc DE = 0x0804, los dos sentidos
+C 0x7eff (0xE140), su bit 4
+C 0x7f06 y del otro lado, al reves
+
+L 0x7f09 elige_el_sentido  Mide donde daria la pelota y elige subir o bajar el bate
+C 0x7f0b la medida
+C 0x7f10 justo en el 5 no se mueve
+C 0x7f14 hacia un lado
+C 0x7f17 o hacia el otro
+
+L 0x7f1b quita_el_boton_si_toca  Con el bit 6 de 0xE430 puesto, el bit 4 -el boton- se cae
+C 0x7f1b (0xE430), su bit 6
+C 0x7f22 el boton, fuera
+
+L 0x7f27 mueve_a_sus_corredores  Sin pelota en juego, la maquina se ocupa de una base por cuadro, rotando entre la cuarta, la tercera y la segunda con los bits 1 y 2 del contador de cuadros
+C 0x7f27 el contador de cuadros
+C 0x7f2a sus bits 1 y 2
+C 0x7f2d HL = 0xE1E0, la cuarta base
+C 0x7f30 C = 0x14, su orden
+C 0x7f35 HL = 0xE1C0, la tercera
+C 0x7f38 C = 0x11, la suya
+C 0x7f3d HL = 0xE1A0, la segunda
+C 0x7f40 C = 0x18, la suya
+
+L 0x7f42 mira_si_le_conviene_correr  Con lanzamiento en marcha, el corredor solo sale si ya ha pasado el punto de no retorno que dice el byte 0x1e de su ficha
+C 0x7f42 (0xE388), su bit 0
+C 0x7f49 IX = la base
+C 0x7f4b el bit 6 de su byte 0x17
+C 0x7f50 su bit 4
+C 0x7f53 el byte 8, donde esta
+C 0x7f56 contra el byte 0x1e
+C 0x7f59 el bit 7 decide el sentido
+
+L 0x7f61 mira_si_puede_salir_ya  Sin lanzamiento: no sale si ya esta en marcha, ni si el de delante no ha despejado
+C 0x7f61 el bit 0: ya corre
+C 0x7f64 el bit 7
+C 0x7f69 la base siguiente
+C 0x7f6c su bit 5
+
+L 0x7f70 y_si_hay_alguien  Solo sale si hay corredor
+C 0x7f70 el bit 1
+
+L 0x7f73 manda_la_orden_de_correr  El valor de C
+L 0x7f74 escribe_en_el_mando_de_la_maquina  Y ahi esta el truco: la orden se deja en 0xE011, el mismo byte donde 0x43e2 pone los bits recien pulsados del segundo jugador
+C 0x7f74 (0xE011), el mando del segundo jugador
+
+D 0x7f78 0x7f98 lanzamientos_desde_un_lado  32 bytes: la lista de lanzamientos que la maquina va sacando en orden. En cada byte, el nibble alto es el momento de soltar y el bajo lleva dos bits de velocidad y dos de efecto
+F 0x7f78 16
+
+D 0x7f98 0x7fb8 lanzamientos_desde_el_otro  Los otros 32, para cuando lanza del otro lado; son los mismos mas uno
+F 0x7f98 16
+
+L 0x7fb8 compara_con_la_base  Devuelve puesto o no el acarreo segun si el corredor de esta ficha ha pasado ya de la posicion que trae A, teniendo en cuenta el sentido -bit 7- y en que mitad del bloque esta la ficha
+C 0x7fb8 C = la posicion a comparar
+C 0x7fb9 el byte 8, donde esta
+C 0x7fbd el bit 7, el sentido
+C 0x7fc1 al reves
+
+L 0x7fc2 mira_en_que_base_esta  Los bits 5 y 6 del byte bajo de HL dicen en cual de las cuatro esta
+C 0x7fc2 el bit 5
+C 0x7fc6 y el bit 6
+C 0x7fca al reves otra vez
+
+L 0x7fcb devuelve_el_sentido  Y de paso, el bit 4 de la ficha
+C 0x7fcb el bit 4
+
+L 0x7fce pilota_la_demostracion  El piloto automatico del menu. Solo corre con 0xE002 puesto -o sea, cuando manda la demostracion- y lo unico que hace es meter un 0x10 en 0xE00E, el hueco de los bits recien pulsados del PRIMER jugador, en el momento en que la pelota llega a donde tiene que batearse. La demostracion se juega sola pisando el mando
+C 0x7fce (0xE002), la demostracion
+C 0x7fd3 (0xE030), la pelota en juego
+C 0x7fd8 (0xE00E) := 0, el mando del primero
+C 0x7fdb (0xE130), la columna de la pelota
+C 0x7fde antes de la 0x87, todavia no
+C 0x7fe1 (0xE363), la velocidad
+C 0x7fe5 A = 0x9c de partida
+
+L 0x7fe7 el_punto_de_la_demostracion  Dos menos por cada punto de velocidad
+C 0x7fe7 dos menos
+C 0x7fee contra la columna de la pelota
+C 0x7ff0 A = 0x10: boton pulsado
+C 0x7ff2 en el mando del primer jugador
+
+# --- los tres ultimos huecos ---
+C 0x5a7a el byte de esta ficha
+C 0x5a7b al hueco de trabajo
+C 0x4d45 la potencia, ya recortada
+C 0x4d47 y los tres bytes siguientes de la ficha, a cero
+C 0x6c17 A trae el numero de sonido y hay que conservarlo
+C 0x6c18 HL y DE, a salvo: el reparto los usa
+C 0x6c1a y a repartirlo entre los canales

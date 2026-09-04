@@ -1,0 +1,22 @@
+# Puntos de entrada de Konami's Baseball (Konami, RC-724, 1984). ROM de 16 KB
+# en 0x4000.
+#
+# La BIOS lee la cabecera "AB" y llama a INIT tras inicializar la maquina. En
+# el volcado los bytes 0-9 son 41 42 61 40 00 00 00 00 00 00: declara SOLO
+# INIT, en 0x4061.
+0x4061   # INIT, declarado en la cabecera del cartucho (bytes 2-3: 61 40)
+
+# INIT engancha la interrupcion a mano igual que King's Valley: pone un 0xC3
+# (jp) en H.KEYI (0xFD9A) y la direccion 0x4010 detras -`ld hl,0fd9ah /
+# ld (hl),0c3h` seguido de `ld hl,04010h / ld (0fd9bh),hl` en 0x4062-0x406C-,
+# borra 0xE000-0xE7FE con un ldir y deja la pila ahi. El trazado estatico no
+# puede llegar solo a un gancho de interrupcion.
+0x4010   # manejador de la interrupcion, enganchado en H.KEYI por INIT (0x4067-0x406C)
+
+# 0x4582 no recibe la direccion del guion en un registro: la lleva INCRUSTADA
+# en el propio codigo, en los dos bytes que van detras del `call`. La rutina
+# hace `ex (sp),hl` para pillar la direccion de retorno, lee de ahi la palabra,
+# adelanta el retorno dos bytes y cae dentro de `encadena_guion`. Sin este
+# aviso el trazado toma esos dos bytes por instrucciones: el reensamblado sale
+# identico igual -son los mismos bytes-, pero el listado miente.
+!skip 0x4582 2   # tras cada CALL 0x4582, dos bytes de parametro: la direccion del guion

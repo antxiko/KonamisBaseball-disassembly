@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Findings — Konami&#x27;s Baseball (Konami, 1984)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,642px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-GAME.html">The game</a><a href="THE-CARTRIDGE.html">The cartridge</a><a href="THE-CODE.html">The code</a><a href="FINDINGS.html" style=color:var(--tinta)>Findings</a><a href="IN-THE-EMULATOR.html">In the emulator</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/HALLAZGOS.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="findings">Findings</h1>
+<p>What turned up when we took it apart. All of it is measured on the binary; where something is an assumption, it says so.</p>
+<h2 id="1-the-script-s-address-is-written-behind-the-call-itself">1. The script&#x27;s address is written behind the CALL itself</h2>
+<p>0x4582 receives nothing in registers. It does <code>ex (sp),hl</code> to grab the return address, reads a word from there, pushes the return <b>two bytes</b> past so they are never executed, and falls into the script interpreter.</p>
+<pre><code>        call 0x4582
+        defw 0x65AD      &lt;- this is NOT code, it is the argument
+        ld de,...</code></pre>
+<p><b>Nine</b> places call it that way. Not knowing this, a disassembler takes those eighteen bytes for instructions; the binary still comes out identical - they are the same bytes - but the listing lies, and <b>no amount of reassembling will catch it</b>.</p>
+<p>Here they are declared with the <code>!skip 0x4582 2</code> directive in the entries file, and all nine arguments land inside script blocks we already know, which is what confirms the reading.</p>
+<h2 id="2-the-screen-s-three-thirds-with-a-single-loop">2. The screen&#x27;s three thirds, with a single loop</h2>
+<p>SCREEN 2 is three independent 2 KB thirds, and for all three to hold the same thing you have to write it three times. 0x4485 copies VRAM to VRAM byte by byte, and is handed <b>4,095</b> bytes from 0x0000 to 0x0800.</p>
+<p>Since the destination runs 0x800 ahead, past the first block it is reading what it has just written. <b>One loop, three identical thirds, 4 KB saved.</b> Done twice: colours and patterns.</p>
+<p>And it falls <b>one byte short</b>: 4,095 and not 4,096, so the last byte of the third third is never written at all.</p>
+<h2 id="3-the-japanese-league-s-twelve-teams-in-twelve-letters">3. The Japanese league&#x27;s twelve teams, in twelve letters</h2>
+<p>The selection grid shows no names: it shows initials. The twelve bytes at 0x4649 are tile numbers, and drawing the font from the ROM they read:</p>
+<pre><code>Central   C D G S T W    Carp, Dragons, Giants, Swallows, Tigers, Whales
+Pacific   B Bu F H L O   Braves, Buffaloes, Fighters, Hawks, Lions, Orions</code></pre>
+<p>The twelve teams of <b>1984 Nippon Professional Baseball</b>, alphabetical within each league. And there is a tile made on purpose for it: <b>0xE8 is a &quot;Bu&quot; in a single character</b>, which exists only so the Buffaloes are not mistaken for the Braves.</p>
+<h2 id="4-the-computer-plays-by-writing-into-the-joystick-slot">4. The computer plays by writing into the joystick slot</h2>
+<p>There is no separate path for the opponent. 0x7d04 works out what a player would do and leaves it written in <b>0xE011</b>, the very byte where 0x43e2 puts the second player&#x27;s freshly pressed bits. The menu&#x27;s demo does the same with <b>0xE00E</b>, the first player&#x27;s.</p>
+<p>So the rest of the cartridge - the batting, the running, the pitching - neither knows nor cares whether a person or the cartridge itself is playing.</p>
+<p>And there is a lovely side effect: since 0x6c0e refuses to play anything while 0xE002 is set, <b>the menu&#x27;s automatic game is silent</b>.</p>
+<h2 id="5-the-font-is-not-ascii-it-is-the-order-the-letters-were-needed-in">5. The font is not ASCII: it is the order the letters were needed in</h2>
+<pre><code>0xD0 B   0xD1 D   0xD2 J   0xD3 O   0xD4 T   0xD5 I   0xD6 C   0xD7 K
+0xD8 P   0xD9 L   0xDA A   0xDB Y   0xDC E   0xDD R   0xDE S   0xDF G
+0xE0 H   0xE1 M   0xE2 V   0xE3 W   0xE4 F   0xE5 U   0xE6 N   0xE7 X
+0xE8 Bu  0xE9 ,   0xEA (c)
+0xF0 to 0xF9: the digits 0 to 9</code></pre>
+<p>There is no order at all: there are <b>the 24 letters the cartridge ever writes</b>, laid down as they were needed. And in the middle, a gift: tiles <b>0xD8 to 0xDE are P L A Y E R S in a row</b>, which is what lets it write &quot;1 PLAYER&quot; and &quot;2 PLAYERS&quot; with no table at all.</p>
+<p>The digits do run in order, 0xF0 plus the digit, which is why the scoreboard and the count are written with a plain <code>or 0f0h</code>.</p>
+<h2 id="6-the-byte-that-ends-a-script-is-the-next-sprite-s-first-byte">6. The byte that ends a script is the next sprite&#x27;s first byte</h2>
+<p>Every player pose is three scripts - one per colour layer - followed by six offset bytes. In <b>21 of the 22 poses</b>, the pointer to those six bytes points <b>at the 0x00 that ends the third script</b>: that byte does both jobs at once, ending the script and being the first layer&#x27;s row offset.</p>
+<p>The only one that does not is 0x50EC, and only because its first offset is 1 and not 0. One byte saved per pose, twenty-one times over.</p>
+<h2 id="7-the-ball-shrinks-because-there-are-five-balls">7. The ball shrinks because there are five balls</h2>
+<p>There is no scaling: there are <b>five different drawings</b> at 0x6573, from seven rows down to two. 0x646b picks between them by subtracting the ball&#x27;s row from its shadow&#x27;s - which is the height - and comparing against <b>0x21, 0x0F and 0x06</b>, and drops one more if the shadow is above row 0x40, that is, if the play is going far.</p>
+<p>The bounce is not computed: it <b>happens</b> when the ball&#x27;s row catches up with its shadow&#x27;s.</p>
+<h2 id="8-the-batter-eats-three-bytes-of-the-routine-next-door">8. The batter eats three bytes of the routine next door</h2>
+<p>The fifteen fielders&#x27; records take 21 bytes in the ROM and 32 in RAM. Fifteen times 32 fills exactly 0xE180..0xE35F, right up to where the meter starts: the top end adds up.</p>
+<p>The bottom end does not: fifteen times 21 is <b>315</b> bytes and from 0x5C03 to 0x5D3B there are <b>312</b>. The three missing ones are the first three of the routine at 0x5D3B - <code>21 00 E1</code>, that is <code>ld hl,0e100h</code> - and they end up in slots 28, 29 and 30 of the fifteenth record.</p>
+<p>Whether that is deliberate byte-saving or an oversight nobody notices because those slots go unused <b>cannot be decided from the binary</b>.</p>
+<h2 id="9-a-script-nobody-draws">9. A script nobody draws</h2>
+<p>99 bytes at 0x4AF0 that form a perfectly valid script: they load four sprite patterns into VRAM 0x1800, four more into 0x1D00 and five attributes, and end <b>exactly</b> where code resumes.</p>
+<p>Nobody draws them:</p>
+<ul><li>the start-up draws the script at 0x4A96, which <b>ends</b> at 0x4AF0, and then overwrites HL with 0x49D4: it does not chain;</li><li>in the whole ROM there is not a single 16-bit immediate between 0x4AF0 and 0x4B53;</li><li>the two script pointer tables - 0x5048 and 0x655F - all point inside their own blocks;</li><li>the nine <code>call 0x4582</code> carry their argument alongside, and none of them is this one.</li></ul>
+<p>It is a <b>negative</b> result - the reader was not found, which is not the same as proving there is none - but it points at bytes that were left inside.</p>
+<h2 id="10-the-same-frame-as-king-s-valley">10. The same frame as King&#x27;s Valley</h2>
+<p>The two cartridges&#x27; VDP register tables are <b>identical but for one byte</b>, the border colour. The script language is the same, with two differences: Baseball has one command more - 0x01 - and chains by reading the address high byte first, the reverse of King&#x27;s Valley.</p>
+<p>That the <b>older</b> cartridge (1984) has the extra command and the newer one (1985) does not fits with King&#x27;s Valley being a simplification. <b>ASSUMPTION</b>: not checked against more cartridges in the family.</p>
+<h2 id="11-every-counter-at-zero-means-256">11. Every counter at zero means 256</h2>
+<p>Clearing the screen is three passes with B at zero. They are not empty passes: the Z80 decrements before testing, so a <code>djnz</code> with B at zero goes round <b>256</b> times. Three times 256 is the name table&#x27;s 768 cells, written without the count appearing anywhere.</p>
+<h2 id="12-it-carries-konami-s-hidden-mark">12. It carries Konami&#x27;s hidden mark</h2>
+<p>At 0x7FF6, closing out the cartridge: <b>RC-724</b> and the katakana title, <b>YA KI U</b>, which is 野球 (<em>yakyū</em>), baseball.</p>
+<p>Konami hid its catalogue number and title at the end of many of its cartridges; <b>Manuel Pazos</b> (<a href="https://twitter.com/ManuelPazosMSX">@ManuelPazosMSX</a>) found it, and he must be credited.</p>
+<footer><p><em>Konami's Baseball</em> was published by Konami for the MSX; its catalogue number is RC-724 and it is 16 KB. All rights in the game remain with their holders. This is preservation, study and documentation work, and the cartridge image is not distributed.</p></footer></div>

@@ -1,0 +1,134 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The code — Konami&#x27;s Baseball (Konami, 1984)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,642px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-GAME.html">The game</a><a href="THE-CARTRIDGE.html">The cartridge</a><a href="THE-CODE.html" style=color:var(--tinta)>The code</a><a href="FINDINGS.html">Findings</a><a href="IN-THE-EMULATOR.html">In the emulator</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/EL-CODIGO.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="the-code">The code</h1>
+<p>629 named routines, 5,301 instructions, 2,357 line comments: <b>44.5 % of the listing commented</b>, and <b>no routine below 10 %</b>.</p>
+<h2 id="where-everything-starts">Where everything starts</h2>
+<pre><code>0x4061  INIT             hooks the interrupt and clears the RAM
+0x4010  interrupt        ALL the game runs in here
+0x411e  bucle_principal  the Konami logo rising up the screen</code></pre>
+<p>The interrupt guards itself with two locks, keeps the frame counter at 0xE000, and at the end reads the VDP status again: if another interrupt is pending it <b>re-executes itself</b> instead of returning.</p>
+<h2 id="how-a-frame-is-split">How a frame is split</h2>
+<p>0x7bb0 splits the work into two halves that alternate frame by frame, on bit 0 of the frame counter:</p>
+<table><tr><th>Even frames</th><th>Odd frames</th></tr><tr><td>the batted ball (0x620a)</td><td>the fielding (0x7373)</td></tr><tr><td>the pitch (0x4ccc)</td><td>the batter (0x7080)</td></tr><tr><td>the runners (0x5e80)</td><td>the pick-up (0x7692)</td></tr><tr><td></td><td>the machine (0x7d04)</td></tr></table>
+<h2 id="the-records">The records</h2>
+<p>Almost everything that moves is described by a <b>record</b> pointed at with IX. The slots the movement engine at 0x4b53 uses:</p>
+<pre><code>+0x00  flags: bit 0 running, bit 6 &quot;moved this frame&quot;
++0x01  sub-pixel accumulator, 16 bits
++0x03  the step added every frame, 16 bits
++0x07  X in pixels           +0x08  Y in pixels
++0x0c  min X  +0x0d  max X  +0x0e  min Y  +0x0f  max Y
++0x10  direction flags: bit 7 the dominant axis, bits 6 and 5 the signs
++0x11  how much is left to travel in X
++0x12  how much is left to travel in Y</code></pre>
+<p>The sub-pixel trick is King&#x27;s Valley&#x27;s: the fine position lives in 16 bits, the step is added every frame, and the accumulator&#x27;s <b>high byte</b> is how many whole pixels to move; it is spent and zeroed, and the remainder is kept for the next frame.</p>
+<h2 id="where-the-state-lives">Where the state lives</h2>
+<table><tr><th>Address</th><th>What</th></tr><tr><td>0xE000</td><td>the frame counter, raised by the interrupt</td></tr><tr><td>0xE001</td><td>the slow counter, lowered every 32 frames</td></tr><tr><td>0xE002</td><td>the demo autopilot is in charge</td></tr><tr><td>0xE00C..0xE011</td><td>the two pads: read, previous read and edges</td></tr><tr><td>0xE100</td><td>the pitcher&#x27;s state</td></tr><tr><td>0xE140</td><td>the batter&#x27;s</td></tr><tr><td>0xE180..0xE1FF</td><td>the four bases, 32 bytes each</td></tr><tr><td>0xE220..0xE33F</td><td>the nine fielders</td></tr><tr><td>0xE340</td><td>the ball thrown between bases</td></tr><tr><td>0xE360..0xE36E</td><td>the pitch meter and its bar</td></tr><tr><td>0xE380</td><td>the running word</td></tr><tr><td>0xE388</td><td>the fielding word</td></tr><tr><td>0xE400</td><td>the state of the play</td></tr><tr><td>0xE408..0xE40E</td><td>strikes, balls, outs, inning, runs</td></tr><tr><td>0xE440..0xE446</td><td>league, teams and the two random seeds</td></tr><tr><td>0xE660..0xE686</td><td>the sound engine, three eleven-byte channels</td></tr></table>
+<h2 id="the-calculator">The calculator</h2>
+<p>The whole flight of a batted ball is worked out in four bytes of RAM, 0xE060 to 0xE063, with two routines that are a multiply and a divide done by hand:</p>
+<ul><li><b>0x6539</b>, multiply: sixteen rounds of shifting 24 bits and adding.</li><li><b>0x6519</b>, divide: eight rounds of shifting and subtracting.</li></ul>
+<p>And there is a smaller divide besides, the one at 0x4cb0, which works on 0xE700 and computes the slope of a trajectory: it is called <b>twice</b> in a row (0x4ca1) to get two decimals.</p>
+<h2 id="how-a-player-is-drawn">How a player is drawn</h2>
+<p>A player is <b>three stacked 16x16 sprites</b>, one per colour, and the cartridge <b>does not keep all the poses in VRAM</b>: every time the pose changes it uploads all three patterns - 32 bytes each - from the ROM, decompressing them with the same interpreter that draws the screens.</p>
+<p>The table at 0x5048 holds one pointer per pose, and each points at a <b>four-word</b> record: the three scripts - one layer each - and a pointer to six offset bytes, one signed (row, column) pair per layer.</p>
+<p>Fielders are cheaper: <b>a single layer</b> and one sprite, and there the table at 0x5048 is used differently - what it returns is the script directly, not a four-word record.</p>
+<h2 id="the-sound-engine">The sound engine</h2>
+<p>Three channels, eleven bytes of state each, starting at 0xE661. The way in is 0x6c0e, which takes the sound number in A and <b>refuses to play anything</b> if 0xE002 says the demo is in charge.</p>
+<p>The dispatcher at 0x6c20 decides how many channels a sound fits in and only takes it if its number is <b>higher</b> than the one already playing: the low six bits of the number act as a priority.</p>
+<p>A sound&#x27;s script, as 0x6ced reads it:</p>
+<pre><code>0xFF  end: the channel goes quiet
+0xFE  back to the start, counting the laps
+0x2n  change the note duration to n
+0x1n  noise: n goes to PSG register 6
+rest  a note, with its duration in the high nibble</code></pre>
+<p>And there is a second path, behind bit 7 of the mode, with up to three prefixes in front of the note: <code>0xDn</code> the duration unit, <code>0xFn</code> the volume decay and <code>0xEn</code> the octave, which is done by <b>doubling</b> the frequency that many times.</p>
+<h2 id="the-tools">The tools</h2>
+<pre><code>tools/z80trace.py    the flow trace, with the !skip directive
+tools/mkasm.py       the listing, from the trace and the notes
+tools/guiones.py     the script interpreter, redone in Python
+tools/pantallas.py   the screens and the poses, drawn from the ROM
+tools/densidad.py    how much of the listing is commented, routine by routine
+tools/presupuesto.py that not one byte is left unassigned</code></pre>
+<footer><p><em>Konami's Baseball</em> was published by Konami for the MSX; its catalogue number is RC-724 and it is 16 KB. All rights in the game remain with their holders. This is preservation, study and documentation work, and the cartridge image is not distributed.</p></footer></div>

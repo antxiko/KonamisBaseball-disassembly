@@ -1,0 +1,134 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>El código — Konami&#x27;s Baseball (Konami, 1984)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,642px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-JUEGO.html">El juego</a><a href="EL-CARTUCHO.html">El cartucho</a><a href="EL-CODIGO.html" style=color:var(--tinta)>El código</a><a href="HALLAZGOS.html">Hallazgos</a><a href="EN-EL-EMULADOR.html">En el emulador</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../THE-CODE.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
+<h1 id="el-codigo">El código</h1>
+<p>629 rutinas con nombre, 5.301 instrucciones, 2.357 comentarios de línea: <b>44,5 % del listado comentado</b>, y <b>ninguna rutina por debajo del 10 %</b>.</p>
+<h2 id="por-donde-empieza-todo">Por dónde empieza todo</h2>
+<pre><code>0x4061  INIT           engancha la interrupción y borra la RAM
+0x4010  interrupción   TODO el juego corre aquí dentro
+0x411e  bucle_principal  el logotipo de Konami subiendo por la pantalla</code></pre>
+<p>La interrupción se protege con dos candados, lleva el contador de fotogramas de 0xE000, y al final vuelve a leer el estado del VDP: si hay otra interrupción pendiente, <b>se re-ejecuta a sí misma</b> en vez de volver.</p>
+<h2 id="el-reparto-del-cuadro">El reparto del cuadro</h2>
+<p>0x7bb0 parte el trabajo en dos mitades que se turnan cuadro a cuadro, mirando el bit 0 del contador de fotogramas:</p>
+<table><tr><th>Cuadros pares</th><th>Cuadros impares</th></tr><tr><td>la pelota bateada (0x620a)</td><td>la defensa (0x7373)</td></tr><tr><td>el lanzamiento (0x4ccc)</td><td>el bateador (0x7080)</td></tr><tr><td>los corredores (0x5e80)</td><td>la recogida (0x7692)</td></tr><tr><td></td><td>la máquina (0x7d04)</td></tr></table>
+<h2 id="las-fichas">Las fichas</h2>
+<p>Casi todo lo que se mueve se describe con una <b>ficha</b> a la que se apunta con IX. Los huecos que usa el motor de movimiento de 0x4b53:</p>
+<pre><code>+0x00  banderas: bit 0 en marcha, bit 6 &quot;se ha movido este cuadro&quot;
++0x01  acumulador de subpíxel, 16 bits
++0x03  el paso que se le suma cada cuadro, 16 bits
++0x07  X en píxeles          +0x08  Y en píxeles
++0x0c  X mínima  +0x0d  X máxima  +0x0e  Y mínima  +0x0f  Y máxima
++0x10  banderas de dirección: bit 7 el eje que manda, bits 6 y 5 los signos
++0x11  lo que le queda por recorrer en X
++0x12  lo que le queda por recorrer en Y</code></pre>
+<p>El truco del subpíxel es el mismo de King&#x27;s Valley: la posición fina va en 16 bits, cada cuadro se le suma el paso, y el <b>byte alto</b> del acumulador es cuántos píxeles enteros toca mover; se gasta y se pone a cero, y el resto se queda para el cuadro siguiente.</p>
+<h2 id="donde-vive-el-estado">Dónde vive el estado</h2>
+<table><tr><th>Dirección</th><th>Qué</th></tr><tr><td>0xE000</td><td>el contador de fotogramas, que sube la interrupción</td></tr><tr><td>0xE001</td><td>el contador lento, que baja cada 32 cuadros</td></tr><tr><td>0xE002</td><td>manda el piloto automático de la demostración</td></tr><tr><td>0xE00C..0xE011</td><td>los dos mandos: lectura, lectura anterior y flancos</td></tr><tr><td>0xE100</td><td>el estado del lanzador</td></tr><tr><td>0xE140</td><td>el del bateador</td></tr><tr><td>0xE180..0xE1FF</td><td>las cuatro bases, 32 bytes cada una</td></tr><tr><td>0xE220..0xE33F</td><td>los nueve jugadores de campo</td></tr><tr><td>0xE340</td><td>la pelota lanzada entre bases</td></tr><tr><td>0xE360..0xE36E</td><td>el medidor del lanzamiento y su barra</td></tr><tr><td>0xE380</td><td>la palabra de la carrera</td></tr><tr><td>0xE388</td><td>la palabra de la defensa</td></tr><tr><td>0xE400</td><td>el estado de la jugada</td></tr><tr><td>0xE408..0xE40E</td><td>strikes, bolas, eliminados, entrada, carreras</td></tr><tr><td>0xE440..0xE446</td><td>liga, equipos y las dos semillas de azar</td></tr><tr><td>0xE660..0xE686</td><td>el motor de sonido, tres canales de once bytes</td></tr></table>
+<h2 id="la-calculadora">La calculadora</h2>
+<p>Todo el vuelo de la pelota bateada se calcula en cuatro bytes de RAM, de 0xE060 a 0xE063, con dos rutinas que son una multiplicación y una división hechas a mano:</p>
+<ul><li><b>0x6539</b>, multiplicar: dieciséis vueltas de desplazar 24 bits y sumar.</li><li><b>0x6519</b>, dividir: ocho vueltas de desplazar y restar.</li></ul>
+<p>Y aparte hay otra división más pequeña, la de 0x4cb0, que trabaja sobre 0xE700 y sirve para calcular la pendiente de una trayectoria: se llama <b>dos veces</b> seguidas (0x4ca1) para sacar dos decimales.</p>
+<h2 id="como-se-dibuja-un-jugador">Cómo se dibuja un jugador</h2>
+<p>Un jugador son <b>tres sprites de 16x16 superpuestos</b>, uno por color, y el cartucho <b>no guarda todas las posturas en VRAM</b>: cada vez que la postura cambia sube los tres patrones enteros -32 bytes cada uno- desde la ROM, descomprimiéndolos con el mismo intérprete que dibuja las pantallas.</p>
+<p>La tabla de 0x5048 lleva un puntero por postura, y cada uno apunta a un registro de <b>cuatro palabras</b>: los tres guiones -una capa cada uno- y un puntero a seis bytes de desplazamiento, una pareja (fila, columna) con signo por capa.</p>
+<p>Los jugadores de campo son más baratos: <b>una sola capa</b> y un sprite, y ahí la tabla de 0x5048 se usa de otra manera -lo que devuelve es el guion directamente, no un registro de cuatro palabras.</p>
+<h2 id="el-motor-de-sonido">El motor de sonido</h2>
+<p>Tres canales, once bytes de estado cada uno, empezando en 0xE661. La entrada es 0x6c0e, que recibe el número de sonido en A y <b>se niega a sonar</b> si 0xE002 dice que manda la demostración.</p>
+<p>El reparto de 0x6c20 decide en cuántos canales cabe el sonido y se lo queda sólo si su número es <b>mayor</b> que el que ya estaba sonando: los seis bits bajos del número hacen de prioridad.</p>
+<p>El guion de un sonido, tal como lo lee 0x6ced:</p>
+<pre><code>0xFF  fin: el canal se calla
+0xFE  vuelta al principio, contando las que lleva
+0x2n  cambia la duración de las notas a n
+0x1n  ruido: n va al registro 6 del PSG
+resto una nota, con su duración en el nibble alto</code></pre>
+<p>Y hay un segundo camino, el del bit 7 del modo, con hasta tres prefijos delante de la nota: <code>0xDn</code> la unidad de duración, <code>0xFn</code> la caída del volumen y <code>0xEn</code> la octava, que se consigue <b>doblando</b> la frecuencia tantas veces como diga.</p>
+<h2 id="las-herramientas">Las herramientas</h2>
+<pre><code>tools/z80trace.py    el trazado de flujo, con la directiva !skip
+tools/mkasm.py       el listado, desde el trazado y las notas
+tools/guiones.py     el intérprete de guiones, rehecho en Python
+tools/pantallas.py   las pantallas y las posturas, dibujadas desde la ROM
+tools/densidad.py    cuánto del listado está comentado, rutina a rutina
+tools/presupuesto.py que no quede un byte sin asignar</code></pre>
+<footer><p><em>Konami's Baseball</em> lo publico Konami para MSX; su numero de catalogo es RC-724 y son 16 KB. Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservacion, estudio y documentacion, y la imagen del cartucho no se distribuye.</p></footer></div>

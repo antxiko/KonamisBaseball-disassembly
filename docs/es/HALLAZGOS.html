@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hallazgos — Konami&#x27;s Baseball (Konami, 1984)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,642px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-JUEGO.html">El juego</a><a href="EL-CARTUCHO.html">El cartucho</a><a href="EL-CODIGO.html">El código</a><a href="HALLAZGOS.html" style=color:var(--tinta)>Hallazgos</a><a href="EN-EL-EMULADOR.html">En el emulador</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../FINDINGS.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
+<h1 id="hallazgos">Hallazgos</h1>
+<p>Lo que apareció al desmontarlo. Todo está medido sobre el binario; cuando algo es una suposición, se dice.</p>
+<h2 id="1-la-direccion-del-guion-va-escrita-detras-del-propio-call">1. La dirección del guion va escrita detrás del propio CALL</h2>
+<p>0x4582 no recibe nada en registros. Hace <code>ex (sp),hl</code> para pillar la dirección de retorno, lee de ahí una palabra, adelanta el retorno <b>dos bytes</b> para que no se ejecuten, y cae dentro del intérprete de guiones.</p>
+<pre><code>        call 0x4582
+        defw 0x65AD      &lt;- esto NO es código, es el argumento
+        ld de,...</code></pre>
+<p>Hay <b>nueve</b> sitios que llaman así. Sin saberlo, un desensamblador toma esos dieciocho bytes por instrucciones; el binario vuelve a salir idéntico -son los mismos bytes- pero el listado miente, y <b>no hay manera de que el reensamblado lo cace</b>.</p>
+<p>Aquí están declarados con la directiva <code>!skip 0x4582 2</code> del fichero de entradas, y los nueve argumentos caen dentro de bloques de guiones ya conocidos, que es lo que confirma la lectura.</p>
+<h2 id="2-los-tres-tercios-de-la-pantalla-con-un-solo-bucle">2. Los tres tercios de la pantalla, con un solo bucle</h2>
+<p>SCREEN 2 son tres tercios independientes de 2 KB, y para que los tres tengan lo mismo hay que escribirlo tres veces. 0x4485 copia de VRAM a VRAM byte a byte, y le mandan <b>4.095</b> bytes de 0x0000 a 0x0800.</p>
+<p>Como el destino va 0x800 por delante, pasado el primer bloque está leyendo lo que él mismo acaba de escribir. <b>Un bucle, tres tercios iguales, 4 KB ahorrados.</b> Se hace dos veces: colores y patrones.</p>
+<p>Y se queda <b>un byte corto</b>: 4.095 y no 4.096, así que el último byte del tercer tercio no se llega a escribir nunca.</p>
+<h2 id="3-los-doce-equipos-de-la-liga-japonesa-en-doce-letras">3. Los doce equipos de la liga japonesa, en doce letras</h2>
+<p>La parrilla de elección no enseña nombres: enseña iniciales. Los doce bytes de 0x4649 son números de tile, y dibujando la fuente desde la ROM se leen:</p>
+<pre><code>Central   C D G S T W    Carp, Dragons, Giants, Swallows, Tigers, Whales
+Pacific   B Bu F H L O   Braves, Buffaloes, Fighters, Hawks, Lions, Orions</code></pre>
+<p>Los doce equipos de la <b>Nippon Professional Baseball de 1984</b>, en orden alfabético dentro de cada liga. Y hay un tile hecho a propósito para esto: el <b>0xE8 es una &quot;Bu&quot; en un solo carácter</b>, que existe sólo para que los Buffaloes no se confundan con los Braves.</p>
+<h2 id="4-la-maquina-juega-escribiendo-en-el-hueco-del-mando">4. La máquina juega escribiendo en el hueco del mando</h2>
+<p>No hay una vía aparte para el rival. 0x7d04 calcula qué haría un jugador y lo deja escrito en <b>0xE011</b>, que es el mismo byte donde 0x43e2 pone los bits recién pulsados del segundo jugador. La demostración del menú hace lo mismo con <b>0xE00E</b>, el del primero.</p>
+<p>Por eso el resto del cartucho -el bateo, la carrera, el lanzamiento- no sabe ni le importa si le está jugando una persona o el propio cartucho.</p>
+<p>Y hay un efecto secundario bonito: como 0x6c0e se niega a hacer sonar nada mientras 0xE002 esté puesto, <b>la partida automática del menú es muda</b>.</p>
+<h2 id="5-la-fuente-no-es-ascii-es-el-orden-en-que-hicieron-falta-las-letras">5. La fuente no es ASCII: es el orden en que hicieron falta las letras</h2>
+<pre><code>0xD0 B   0xD1 D   0xD2 J   0xD3 O   0xD4 T   0xD5 I   0xD6 C   0xD7 K
+0xD8 P   0xD9 L   0xDA A   0xDB Y   0xDC E   0xDD R   0xDE S   0xDF G
+0xE0 H   0xE1 M   0xE2 V   0xE3 W   0xE4 F   0xE5 U   0xE6 N   0xE7 X
+0xE8 Bu  0xE9 ,   0xEA (c)
+0xF0 a 0xF9: las cifras del 0 al 9</code></pre>
+<p>No hay ningún orden: hay <b>las 24 letras que el cartucho llega a escribir</b>, puestas según fueron haciendo falta. Y en medio, un regalo: los tiles <b>0xD8 a 0xDE son P L A Y E R S seguidos</b>, que es lo que permite escribir &quot;1 PLAYER&quot; y &quot;2 PLAYERS&quot; sin tabla ninguna.</p>
+<p>Las cifras sí van seguidas, 0xF0 más el dígito, y por eso el marcador y la cuenta se escriben con un simple <code>or 0f0h</code>.</p>
+<h2 id="6-el-byte-que-cierra-un-guion-es-el-primer-byte-del-sprite-siguiente">6. El byte que cierra un guion es el primer byte del sprite siguiente</h2>
+<p>Cada postura de jugador son tres guiones -uno por capa de color- y detrás van seis bytes de desplazamiento. En <b>21 de las 22 posturas</b>, el puntero a esos seis bytes apunta <b>al 0x00 que cierra el tercer guion</b>: ese byte hace las dos cosas a la vez, cerrar el guion y ser el desplazamiento en fila de la primera capa.</p>
+<p>La única que no lo hace es la de 0x50EC, y es porque su primer desplazamiento vale 1 y no 0. Un byte ahorrado por postura, veintiuna veces.</p>
+<h2 id="7-la-pelota-se-hace-pequena-porque-hay-cinco-pelotas">7. La pelota se hace pequeña porque hay cinco pelotas</h2>
+<p>No hay escalado: hay <b>cinco dibujos</b> distintos en 0x6573, de siete filas a dos. 0x646b elige entre ellos restando la fila de la sombra menos la de la pelota -que es la altura- y comparando con <b>0x21, 0x0F y 0x06</b>, y baja uno más si la sombra está por encima de la fila 0x40, o sea si la jugada va lejos.</p>
+<p>El bote no se calcula: <b>ocurre</b> cuando la fila de la pelota alcanza a la de su sombra.</p>
+<h2 id="8-el-bateador-se-come-tres-bytes-de-la-rutina-de-al-lado">8. El bateador se come tres bytes de la rutina de al lado</h2>
+<p>Las quince fichas de los jugadores de campo ocupan 21 bytes en la ROM y 32 en RAM. Quince por 32 llenan exactamente 0xE180..0xE35F, justo hasta donde empieza el medidor: por arriba cuadra.</p>
+<p>Por abajo no: quince por 21 son <b>315</b> bytes y de 0x5C03 a 0x5D3B hay <b>312</b>. Los tres que faltan son los tres primeros de la rutina de 0x5D3B -<code>21 00 E1</code>, o sea <code>ld hl,0e100h</code>- y acaban en los huecos 28, 29 y 30 de la ficha número quince.</p>
+<p>Que sea a propósito para ahorrar bytes o un descuido que no se nota porque esos huecos no se usan, <b>no se puede decidir mirando el binario</b>.</p>
+<h2 id="9-un-guion-que-no-dibuja-nadie">9. Un guion que no dibuja nadie</h2>
+<p>99 bytes en 0x4AF0 que son un guion perfectamente válido: cargan cuatro patrones de sprite en la VRAM 0x1800, otros cuatro en 0x1D00 y cinco atributos, y acaban <b>exactamente</b> donde vuelve a haber código.</p>
+<p>No los dibuja nadie:</p>
+<ul><li>el arranque dibuja el guion de 0x4A96, que <b>acaba</b> en 0x4AF0, y luego pisa HL con 0x49D4: no encadena;</li><li>en toda la ROM no hay ni un solo valor inmediato de 16 bits entre 0x4AF0 y 0x4B53;</li><li>las dos tablas de punteros a guiones -0x5048 y 0x655F- apuntan todas dentro de sus propios bloques;</li><li>los nueve <code>call 0x4582</code> llevan su argumento escrito al lado, y ninguno es éste.</li></ul>
+<p>Es un resultado <b>negativo</b> -no se ha encontrado el lector, que no es lo mismo que demostrar que no existe-, pero apunta a bytes que se quedaron dentro.</p>
+<h2 id="10-el-mismo-armazon-que-king-s-valley">10. El mismo armazón que King&#x27;s Valley</h2>
+<p>La tabla de registros del VDP de los dos cartuchos es <b>idéntica salvo un byte</b>, el del color de borde. El lenguaje de guiones es el mismo, con dos diferencias: Baseball tiene un comando de más -el 0x01- y encadena leyendo la dirección con el byte alto primero, al revés que King&#x27;s Valley.</p>
+<p>Que el cartucho <b>viejo</b> (1984) tenga el comando de más y el nuevo (1985) no, encaja con que King&#x27;s Valley sea una simplificación. <b>SUPOSICIÓN</b>: no se ha comprobado con más cartuchos de la familia.</p>
+<h2 id="11-todo-contador-a-cero-vale-256">11. Todo contador a cero vale 256</h2>
+<p>El borrado de la pantalla son tres pasadas con B a cero. No son pasadas vacías: el Z80 decrementa antes de comprobar, así que un <code>djnz</code> con B a cero da <b>256</b> vueltas. Tres por 256 son las 768 posiciones de la tabla de nombres, escritas sin que la cuenta aparezca en ningún sitio.</p>
+<h2 id="12-lleva-la-marca-oculta-de-konami">12. Lleva la marca oculta de Konami</h2>
+<p>En 0x7FF6, cerrando el cartucho: <b>RC-724</b> y el título en katakana, <b>YA KI U</b>, que es 野球 (<em>yakyū</em>), béisbol.</p>
+<p>Konami escondía su número de catálogo y el título al final de muchos de sus cartuchos; lo descubrió <b>Manuel Pazos</b> (<a href="https://twitter.com/ManuelPazosMSX">@ManuelPazosMSX</a>), y hay que citarlo.</p>
+<footer><p><em>Konami's Baseball</em> lo publico Konami para MSX; su numero de catalogo es RC-724 y son 16 KB. Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservacion, estudio y documentacion, y la imagen del cartucho no se distribuye.</p></footer></div>

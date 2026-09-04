@@ -1,0 +1,113 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The game — Konami&#x27;s Baseball (Konami, 1984)</title>
+<style>
+:root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
+  --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+@media (prefers-color-scheme:light){:root{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;
+  --panel:#f7f6f2;--linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}}
+:root[data-theme="dark"]{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;
+  --linea:#23262e;--rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
+:root[data-theme="light"]{--tinta:#191a1e;--suave:#5a5d66;--fondo:#e9e7e1;--panel:#f7f6f2;
+  --linea:#d0cdc5;--rojo:#b23f34;--cyan:#1c6b7c;--verde:#2b7734;--oro:#8a7420}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);padding:0 1.25rem 6rem;
+  font:15px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.w{max-width:1120px;margin:0 auto}
+.n{max-width:68ch}
+h1,h2,h3,h4{font-weight:400;text-wrap:balance}
+a{color:var(--cyan)}
+img{image-rendering:pixelated;max-width:100%;height:auto;display:block}
+header.top{display:flex;flex-direction:column;align-items:center;gap:1.5rem;
+  padding:4rem 0 2rem;text-align:center}
+header.top img{width:min(100%,642px)}
+.claim{max-width:60ch;color:var(--suave);font-size:1.05rem}
+.claim b{color:var(--tinta);font-weight:400}
+.ficha{display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.5rem;width:100%;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--suave);
+  border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);padding:.85rem 0}
+.ficha b{color:var(--rojo);font-weight:400}
+nav{display:flex;flex-wrap:wrap;gap:1.25rem;justify-content:center;padding:1.25rem 0;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+nav a{color:var(--suave);text-decoration:none;border-bottom:1px solid transparent}
+nav a:hover,nav a:focus{color:var(--tinta);border-bottom-color:var(--rojo)}
+nav.docs{border-top:1px solid var(--linea);border-bottom:1px solid var(--linea);
+  margin-bottom:1rem}
+section{margin-top:4.5rem;scroll-margin-top:1rem}
+section>h2{font-size:1rem;letter-spacing:.1em;text-transform:uppercase;
+  border-left:3px solid var(--rojo);padding-left:.9rem;margin:0 0 1.5rem}
+.cifras{display:grid;gap:1px;background:var(--linea);border:1px solid var(--linea);
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cifra{background:var(--panel);padding:1.1rem}
+.cifra b{display:block;font-size:1.7rem;color:var(--oro);font-weight:400;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.cifra span{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--suave)}
+.hall{border-top:1px solid var(--linea);padding-top:1.75rem;margin-top:2.5rem}
+.hall:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.hall h3{margin:0 0 .75rem;font-size:1.15rem;color:var(--rojo)}
+.hall h4{color:var(--oro);margin:1.5rem 0 .5rem;font-size:.95rem}
+.hall p{margin:0 0 1rem}
+pre.asm{background:var(--panel);border-left:2px solid var(--verde);margin:1.25rem 0;
+  padding:1rem 1.1rem;overflow-x:auto;font-size:13px;line-height:1.6;color:var(--tinta)}
+.par{display:grid;gap:1.25rem;grid-template-columns:1fr}
+@media(min-width:820px){.par{grid-template-columns:1fr 1fr}}
+.par figure{margin:0}
+table{border-collapse:collapse;width:100%;margin:1.25rem 0;font-size:13px;display:block;
+  overflow-x:auto}
+th,td{text-align:left;padding:.5rem .75rem;border-bottom:1px solid var(--linea)}
+th{color:var(--suave);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase}
+td.num{font-variant-numeric:tabular-nums;color:var(--oro)}
+.nivel{margin-top:2rem}
+.nivel h3{margin:0 0 .9rem;font-size:.95rem;letter-spacing:.06em;text-transform:uppercase}
+.nivel em{color:var(--cyan);font-style:normal}
+.sep{color:var(--suave);margin:0 .6rem}
+.rejilla{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.rejilla figure{margin:0;background:var(--panel);box-shadow:0 0 0 1px var(--linea)}
+.rejilla figcaption{display:flex;justify-content:space-between;padding:.45rem .65rem;
+  font-size:11px;color:var(--suave);border-top:1px solid var(--linea)}
+.dir{font-variant-numeric:tabular-nums;color:var(--verde)}
+footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
+  color:var(--suave);font-size:12px}
+
+/* Aviso de trabajo en curso: tiene que verse antes que las cifras, porque un
+   100% mal leido hace mas dano que no ponerlo. */
+.aviso{background:#3a2a10;border-left:3px solid var(--oro);margin:1.5rem auto;
+  padding:1rem 1.2rem;max-width:900px;border-radius:4px}
+.aviso p{margin:0;color:var(--tinta);font-size:15px;line-height:1.65}
+.galeria{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:1.5rem;margin:1.5rem 0}
+.galeria figure{margin:0}
+.galeria img{width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--linea);border-radius:3px}
+.galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
+audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
+</style>
+<div class="w"><nav class="top"><a href="index.html">Home</a><a href="GETTING-STARTED.html">Start</a><a href="THE-GAME.html" style=color:var(--tinta)>The game</a><a href="THE-CARTRIDGE.html">The cartridge</a><a href="THE-CODE.html">The code</a><a href="FINDINGS.html">Findings</a><a href="IN-THE-EMULATOR.html">In the emulator</a><a href="OPEN-QUESTIONS.html">Open questions</a><a href="es/EL-JUEGO.html" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+<h1 id="the-game">The game</h1>
+<p><b>Konami&#x27;s Baseball</b> is a baseball match for one or two players. It came out in 1984, it is <b>RC-724</b> in Konami&#x27;s catalogue, and it takes 16 KB.</p>
+<p>Everything on this page is read off the binary. Where something could not be checked, it says so.</p>
+<h2 id="choosing-a-game">Choosing a game</h2>
+<p>The title screen offers <b>1 PLAYER</b> and <b>2 PLAYERS</b>. With one, the machine plays the other side; with two, the second player uses the second joystick or their half of the keyboard.</p>
+<p>Below that comes the league choice: <b>CENTRAL</b> and <b>PACIFIC</b>. And with the league chosen, the grid of six teams, each by its initial:</p>
+<table><tr><th>Central</th><th></th><th>Pacific</th><th></th></tr><tr><td><b>C</b></td><td>Carp</td><td><b>B</b></td><td>Braves</td></tr><tr><td><b>D</b></td><td>Dragons</td><td><b>Bu</b></td><td>Buffaloes</td></tr><tr><td><b>G</b></td><td>Giants</td><td><b>F</b></td><td>Fighters</td></tr><tr><td><b>S</b></td><td>Swallows</td><td><b>H</b></td><td>Hawks</td></tr><tr><td><b>T</b></td><td>Tigers</td><td><b>L</b></td><td>Lions</td></tr><tr><td><b>W</b></td><td>Whales</td><td><b>O</b></td><td>Orions</td></tr></table>
+<p>These are the twelve teams of <b>1984 Nippon Professional Baseball</b>, alphabetical within each league. The cartridge never writes the names anywhere: only the initials, in the twelve bytes at 0x4649. The <b>Bu</b> for the Buffaloes is a tile made on purpose, 0xE8, so it is not mistaken for the Braves&#x27; B.</p>
+<p>The only thing that tells one team from another is <b>two bytes</b>, the ones 0x5b5a pulls from the tables at 0x5b9c and 0x5ba8 and drops into slots 0x0c and 0x10 of the pitcher&#x27;s and batter&#x27;s records. There are no rosters and no statistics: two numbers per team.</p>
+<h2 id="the-controls">The controls</h2>
+<p>The first player can use the joystick in the first port or <b>the four cursor keys plus the space bar</b> (0x436e). The second, the second port or <b>W up, Z down, A left, D right and SHIFT</b> (0x432a).</p>
+<p>Both keyboard reads are rearranged into the order the rest of the cartridge wants, which is the joystick&#x27;s: bit 0 up, 1 down, 2 left, 3 right, 4 and 5 the buttons. The cursor-key read is translated in one go with the sixteen-entry table at 0x4396, in which the six impossible combinations - up and down at once, left and right at once - all read 0x0F.</p>
+<h2 id="pitching">Pitching</h2>
+<p>Before the pitch there is a <b>meter</b> that fills and empties by itself, bottom left: fifteen cells and a BCD counter that climbs to 60 and then comes back down (0x4fc3). The high nibble of 0xE364 and the two pairs of bits in the low one are the pitch&#x27;s speed and break.</p>
+<p>With the pitch wound up, the arm goes through <b>six poses</b>, one every five frames (0x4d74). On the sixth it lets go of the ball, and from there 0x4dac is in charge: the ball advances by adding the step at 0xE125 to a 16-bit accumulator, and the whole byte that falls out is how far it moves. Every three turns of the counter at 0xE127 it is given a new step from the table at 0x4f97: that is the <b>break</b>.</p>
+<h2 id="batting">Batting</h2>
+<p>The bat has <b>five poses</b> per kind of swing (table at 0x4faf), and advances for as long as the button is held. There is contact if the ball enters the contact box - one of the three at 0x730a, two limits per axis - and the bat is in pose 2, 3 or 4.</p>
+<p><b>Where</b> the ball enters the bat is what gives the angle it flies off at: the table at 0x728a holds fifteen angles per side of the batter - three poses by five columns - running from 0x3c down to 0x04 and back up to 0x3c, that is, from one extreme to the other. To the angle are added <b>two bits of the Z80&#x27;s R register</b> (0x714b), so no two hits are exactly alike.</p>
+<h2 id="running">Running</h2>
+<p>The four bases are four 32-byte records at 0xE180. A runner takes off when the direction of that base is pressed together with the button, and there is a nice check in 0x44ed: if the step would land him on the base the other player already holds, he takes one more step the same way.</p>
+<p>With one player, the machine decides on its own which runner to send: it walks the four bases, keeps the one furthest along in each direction, and <b>writes the order into 0xE011</b>, the very byte where the second player&#x27;s freshly pressed bits live.</p>
+<h2 id="counting">Counting</h2>
+<p>The counters all sit together from 0xE408: strikes, balls, outs, the inning, and each team&#x27;s runs. Three strikes make an out, three outs change the inning, and <b>four balls</b> are a walk - and out comes the &quot;4 BALL&quot; card, written with tile 0xF4, the digit four, in front of the word.</p>
+<p>There are seven cards, in the table at 0x7c20, each with its sound: <b>STRIKE</b>, <b>BALL</b>, <b>OUT</b>, <b>SAFE</b>, <b>CHANGE</b>, <b>FOUL</b> and that <b>4 BALL</b>. And separately <b>HOME RUN</b>, which blinks against the empty frame every 32 frames.</p>
+<h2 id="how-many-innings">How many innings</h2>
+<p>Nine. 0x7b36 bumps the counter at 0xE40B every time the second team&#x27;s turn ends, and on reaching <b>nine</b> it sets 0xE402 to 0x80, which is what the outer loop watches to call the match over.</p>
+<p>There is one exception: in the <b>eighth</b>, if the two scores are level, 0x7b7b writes an 0xE7 into the cell and the match carries on. So there is something like extra innings on a tie. <b>ASSUMPTION</b>: nobody has played a whole match through to see it.</p>
+<footer><p><em>Konami's Baseball</em> was published by Konami for the MSX; its catalogue number is RC-724 and it is 16 KB. All rights in the game remain with their holders. This is preservation, study and documentation work, and the cartridge image is not distributed.</p></footer></div>
