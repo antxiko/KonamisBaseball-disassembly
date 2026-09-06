@@ -65,9 +65,10 @@ up in this cartridge:
 openmsx -machine Philips_NMS_8250 -carta baseball.rom
 ```
 
-To dump VRAM and compare for real, `tools/omsx_vram.tcl` has the breakpoints
-ready. That comparison is **still pending**, and it is written down as such on
-the open questions page.
+Dumping VRAM and comparing for real needs an emulator script, and **this
+repository does not carry one**. That comparison is **still pending**, and it is
+written down as such on the open questions page; the good places to stop are the
+ones just below.
 
 ## What to know before measuring
 

@@ -64,9 +64,10 @@ salieron dos:
 openmsx -machine Philips_NMS_8250 -carta baseball.rom
 ```
 
-Para volcar la VRAM y comparar de verdad, `tools/omsx_vram.tcl` tiene los
-puntos de parada preparados. La comparación queda **pendiente**, y está anotada
-como tal en la página de preguntas abiertas.
+Para volcar la VRAM y comparar de verdad hace falta un guion de emulador, y
+**este repositorio no lo trae**. La comparación queda **pendiente**, y está
+anotada como tal en la página de preguntas abiertas; los sitios buenos donde
+parar son los de aquí abajo.
 
 ## Lo que hay que saber antes de medir
 
