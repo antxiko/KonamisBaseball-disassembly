@@ -3822,7 +3822,7 @@ mueve_la_pelota_en_vertical:		; Le resta la velocidad a la pareja de 16 bits de 
 	or a			;6459   ; con el byte alto puesto sigue por el aire
 	jr nz,elige_el_tamano_de_la_pelota		;645a
 	ld a,l			;645c
-	cp b			;645d   ; comparada con la de la sombra
+	cp b			;645d   ; la fila de la pelota, comparada con la de la sombra
 	jr z,elige_el_tamano_de_la_pelota		;645e
 	jr c,elige_el_tamano_de_la_pelota		;6460
 	ld a,001h		;6462   ; (0xE031) := 1: bote

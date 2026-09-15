@@ -2270,8 +2270,7 @@ C 0x644a (0xE042), el alto
 C 0x644f menos la velocidad
 C 0x6452 y de vuelta a los dos bytes
 C 0x6459 con el byte alto puesto sigue por el aire
-C 0x645d la fila de la pelota...
-C 0x645d comparada con la de la sombra
+C 0x645d la fila de la pelota, comparada con la de la sombra
 C 0x6462 (0xE031) := 1: bote
 C 0x6468 y la pelota se queda pegada a la sombra
 
