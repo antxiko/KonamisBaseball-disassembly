@@ -130,3 +130,27 @@ tools/pantallas.py   the screens and the poses, drawn from the ROM
 tools/densidad.py    how much of the listing is commented, routine by routine
 tools/presupuesto.py that not one byte is left unassigned
 ```
+
+## Code shared with other Konami cartridges
+
+This disassembly has been compared, instruction by instruction, with
+every other Konami one in the series. A block counts when the same
+instructions, at least six of them from a label to its `ret` or its
+unconditional jump, are in both cartridges; the addresses are left
+aside, because they change from one cartridge to the next. Of the
+other 57, **31** have at least one block in common with this one;
+these are the ones that share the most:
+
+| Cartridge | Blocks | Instructions | For example (here = there) |
+|---|---:|---:|---|
+| [Konami's Golf](https://antxiko.github.io/KonamisGolf-disassembly/) | 34 | 552 | `lee_una_nota_larga` (0x6D9F) = `corre_el_canal_nota_larga` |
+| [Konami's Tennis](https://antxiko.github.io/KonamisTennis-disassembly/) | 32 | 518 | `lee_una_nota_larga` (0x6D9F) = `manda_de_la_melodia` |
+| [Hyper Olympic 1](https://antxiko.github.io/HyperOlympic1-disassembly/) | 19 | 218 | `replica_el_tercio_en_los_otros_dos` (0x4485) = `COPIA_VRAM_A_VRAM` |
+| [Hyper Olympic 2](https://antxiko.github.io/HyperOlympic2-disassembly/) | 18 | 209 | `replica_el_tercio_en_los_otros_dos` (0x4485) = `COPIA_VRAM_A_VRAM` |
+| [Hyper Sports 1](https://antxiko.github.io/HyperSports1-disassembly/) | 5 | 58 | `cierra_el_bucle_del_guion` (0x6C6D) = `SUMA_BONUS_7BFC` |
+| [Magical Tree](https://antxiko.github.io/MagicalTree-disassembly/) | 5 | 65 | `toca_una_nota` (0x6D3F) = `lee_la_nota_de_la_partitura` |
+| [Konami's Ping Pong](https://antxiko.github.io/KonamisPingPong-disassembly/) | 5 | 49 | `abre_o_cierra_el_canal` (0x6C88) = `pon_el_mezclador` |
+
+The whole matrix, the 58 cartridges against each other, is on
+[The routines](https://antxiko.github.io/MSX-disassembly-database/THE-ROUTINES.html) in the series database, along
+with the method and the program that measures it.

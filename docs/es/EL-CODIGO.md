@@ -132,3 +132,27 @@ tools/pantallas.py   las pantallas y las posturas, dibujadas desde la ROM
 tools/densidad.py    cuánto del listado está comentado, rutina a rutina
 tools/presupuesto.py que no quede un byte sin asignar
 ```
+
+## Código compartido con otros cartuchos de Konami
+
+Este desensamblado se ha comparado, instrucción por instrucción, con
+todos los demás de Konami de la serie. Cuenta un bloque cuando las
+mismas instrucciones, al menos seis desde una etiqueta hasta su `ret`
+o su salto sin condición, están en los dos cartuchos; las direcciones
+no se miran, porque cambian de un cartucho a otro. De los otros 57,
+**31** tienen al menos un bloque en común con este; estos son los
+que más comparten:
+
+| Cartucho | Bloques | Instrucciones | Por ejemplo (aquí = allí) |
+|---|---:|---:|---|
+| [Konami's Golf](https://antxiko.github.io/KonamisGolf-disassembly/es/) | 34 | 552 | `lee_una_nota_larga` (0x6D9F) = `corre_el_canal_nota_larga` |
+| [Konami's Tennis](https://antxiko.github.io/KonamisTennis-disassembly/es/) | 32 | 518 | `lee_una_nota_larga` (0x6D9F) = `manda_de_la_melodia` |
+| [Hyper Olympic 1](https://antxiko.github.io/HyperOlympic1-disassembly/es/) | 19 | 218 | `replica_el_tercio_en_los_otros_dos` (0x4485) = `COPIA_VRAM_A_VRAM` |
+| [Hyper Olympic 2](https://antxiko.github.io/HyperOlympic2-disassembly/es/) | 18 | 209 | `replica_el_tercio_en_los_otros_dos` (0x4485) = `COPIA_VRAM_A_VRAM` |
+| [Hyper Sports 1](https://antxiko.github.io/HyperSports1-disassembly/es/) | 5 | 58 | `cierra_el_bucle_del_guion` (0x6C6D) = `SUMA_BONUS_7BFC` |
+| [Magical Tree](https://antxiko.github.io/MagicalTree-disassembly/es/) | 5 | 65 | `toca_una_nota` (0x6D3F) = `lee_la_nota_de_la_partitura` |
+| [Konami's Ping Pong](https://antxiko.github.io/KonamisPingPong-disassembly/es/) | 5 | 49 | `abre_o_cierra_el_canal` (0x6C88) = `pon_el_mezclador` |
+
+La matriz entera, los 58 cartuchos entre sí, está en
+[Las rutinas](https://antxiko.github.io/MSX-disassembly-database/es/LAS-RUTINAS.html) de la base de datos de la
+serie, con el método y el programa que la mide.
