@@ -25,10 +25,15 @@ def main(raiz_web):
                 if destino.startswith(("http", "#", "data:", "mailto:")):
                     continue
                 total += 1
-                objetivo = os.path.normpath(
-                    os.path.join(raiz, destino.split("#")[0].split("?")[0]))
-                if not os.path.exists(objetivo):
+                fichero, _, ancla = destino.partition("#")
+                fichero = fichero.split("?")[0]
+                objetivo = os.path.normpath(os.path.join(raiz, fichero))
+                # Pages no convierte el markdown: un enlace a un .md que existe
+                # al lado sirve el texto en crudo, y eso tambien esta roto
+                if not os.path.exists(objetivo) or fichero.endswith(".md"):
                     rotos.append((p, destino))
+                elif ancla and objetivo.endswith(".html") and                         f'id="{ancla}"' not in open(objetivo, encoding="utf-8").read():
+                    rotos.append((p, destino + "  (no existe el ancla)"))
     for p, d in rotos:
         print(f"  ROTO  {p}  ->  {d}")
     print(f"{total} enlaces locales comprobados, {len(rotos)} rotos")

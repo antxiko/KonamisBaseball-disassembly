@@ -266,8 +266,7 @@ class TestWeb(unittest.TestCase):
                 if not fich.endswith((".md", ".html")):
                     continue
                 texto = sin_compartido(lee(os.path.join(carpeta, fich)))
-                preguntas = fich.startswith(("OPEN-QUESTIONS",
-                                             "PREGUNTAS-ABIERTAS"))
+                preguntas = fich.startswith(("OPEN-QUESTIONS", "PREGUNTAS-ABIERTAS", "CURIOSITIES", "CURIOSIDADES"))
                 for juego in OTROS_JUEGOS:
                     if juego in permitidos:
                         continue
@@ -283,9 +282,9 @@ class TestWeb(unittest.TestCase):
         Es la trampa mas facil de esta serie: cambiar el listado y dejar en la
         web el numero de antes.
         """
-        make_web = lee(os.path.join(RAIZ, "tools", "make_web.py"))
+        make_web = lee(os.path.join(RAIZ, "tools", "contenido_web.py"))
         m = re.search(r"^RUTINAS\s*=\s*(\d+)", make_web, re.MULTILINE)
-        self.assertIsNotNone(m, "make_web.py no declara RUTINAS")
+        self.assertIsNotNone(m, "contenido_web.py no declara RUTINAS")
         publicadas = int(m.group(1))
 
         reales = len(bloques_del_listado(lee(ASM).splitlines()))
@@ -296,7 +295,7 @@ class TestWeb(unittest.TestCase):
 
     def test_la_suma_de_bytes_da_el_cartucho(self):
         """CODIGO + DATOS de la web tienen que dar 16.384 exactos."""
-        make_web = lee(os.path.join(RAIZ, "tools", "make_web.py"))
+        make_web = lee(os.path.join(RAIZ, "tools", "contenido_web.py"))
         codigo = int(re.search(r"^CODIGO\s*=\s*(\d+)", make_web,
                                re.MULTILINE).group(1))
         datos = int(re.search(r"^DATOS\s*=\s*(\d+)", make_web,

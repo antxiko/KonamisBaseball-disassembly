@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>La música — Konami&#x27;s Baseball (Konami, 1984)</title>
+<title>{{ page.title }} — Konami's Baseball (Konami, 1984)</title>
 <style>
 :root{--tinta:#cfd0d4;--suave:#83868f;--fondo:#000;--panel:#0c0e13;--linea:#23262e;
   --rojo:#ff897d;--cyan:#65dbef;--verde:#3eb849;--oro:#ded087}
@@ -82,47 +82,6 @@ footer{margin-top:5rem;padding-top:1.5rem;border-top:1px solid var(--linea);
 .galeria figcaption{color:var(--suave);font-size:13px;margin-top:.5rem}
 audio{display:block;width:100%;max-width:640px;margin:.75rem 0 1.5rem}
 </style>
-<div class="w"><nav class="top"><a href="index.html">Portada</a><a href="EMPEZAR.html">Empezar</a><a href="EL-JUEGO.html">El juego</a><a href="EL-CARTUCHO.html">El cartucho</a><a href="EL-CODIGO.html">El código</a><a href="LA-MUSICA.html" style=color:var(--tinta)>La música</a><a href="HALLAZGOS.html">Hallazgos</a><a href="EN-EL-EMULADOR.html">En el emulador</a><a href="PREGUNTAS-ABIERTAS.html">Preguntas abiertas</a><a href="../THE-MUSIC.html" style="margin-left:auto;color:var(--oro)">English</a></nav>
-<h1 id="la-musica">La música</h1>
-<p>Todo lo que suena aquí sale de ejecutar el motor de sonido del cartucho (<code>mueve_el_sonido</code>, 0x6CAE, y <code>pide_un_sonido</code>, 0x6C0E, que le reparte los canales; lo llama la interrupción) en un Z80 emulado, cuadro a cuadro y a 60 por segundo, igual que lo llama el juego. Lo que el motor escribe en el PSG pasa a sonido con un AY-3-8910 (<code>tools/musica.py</code>). Cada MP3 es la pieza entera hasta donde vuelve a empezar, más 8 segundos de la vuelta apagándose; las que no se repiten acaban donde acaba el motor.</p>
-<h2 id="cotejado-con-openmsx">Cotejado con openMSX</h2>
-<p>Las escrituras al PSG se han comparado cuadro a cuadro con las de openMSX (C-BIOS MSX1 japonés). En todos los cuadros el PSG queda igual:</p>
-<ul><li>la melodía de entrada (0x95) entera, 368 cuadros;</li><li>el aviso de la entrada (0x8E) entero, 578 cuadros.</li></ul>
-<p>El timbre no está cotejado: es el de un AY-3-8910 de manual, no una grabación del emulador. Las sondas están en <code>tools/omsx_psg.tcl</code> y <code>tools/coteja_psg.py</code>.</p>
-<h2 id="como-se-pide-una-pieza">Cómo se pide una pieza</h2>
-<p><code>pide_un_sonido</code> recibe el número en A y no suena con el piloto automático puesto (0xE002). Los números bajos son efectos y del 0x86 en adelante hay música. Cada ficha ocupa once bytes desde 0xE661 y 0xE660 guarda la copia del mezclador del PSG, que el arranque deja en 0xB8. Las pistas «de la tabla» están en la tabla de pistas pero ninguna rutina las pide con un <code>ld a</code>.</p>
-<h2 id="las-musicas">Las músicas</h2>
-<p><b>La melodía de entrada</b> (0x95)</p>
-<p>Lo pide la rutina de 0x4254, al presentar el partido; dura 6,1 s.</p>
-<audio controls preload="none" src="../audio/musica_95.mp3?v=a4d5bb8c"></audio>
-<p><b>El final del partido</b> (0x93)</p>
-<p>Lo pide la rutina de 0x429E; dura 5,0 s.</p>
-<audio controls preload="none" src="../audio/musica_93.mp3?v=b765405d"></audio>
-<p><b>El aviso de la entrada</b> (0x8E)</p>
-<p>Lo pide <code>acaba_la_entrada</code>; dura 9,6 s y vuelve a empezar en el segundo 0,0.</p>
-<audio controls preload="none" src="../audio/musica_8E.mp3?v=86d20ef3"></audio>
-<p><b>Una pista de la tabla</b> (0x8D)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 4,8 s y vuelve a empezar en el segundo 0,0.</p>
-<audio controls preload="none" src="../audio/musica_8D.mp3?v=2e3b6e49"></audio>
-<p><b>Otra pista de la tabla</b> (0x8C)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 3,4 s.</p>
-<audio controls preload="none" src="../audio/musica_8C.mp3?v=1d95cb2f"></audio>
-<p><b>Una tercera pista de la tabla</b> (0x8F)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 6,3 s y vuelve a empezar en el segundo 1,5.</p>
-<audio controls preload="none" src="../audio/musica_8F.mp3?v=d3bb305d"></audio>
-<p><b>Una cuarta pista de la tabla</b> (0x90)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 1,5 s.</p>
-<audio controls preload="none" src="../audio/musica_90.mp3?v=96171765"></audio>
-<p><b>Una quinta pista de la tabla</b> (0x91)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 1,5 s.</p>
-<audio controls preload="none" src="../audio/musica_91.mp3?v=a9b5da67"></audio>
-<p><b>Una sexta pista de la tabla</b> (0x92)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 5,0 s.</p>
-<audio controls preload="none" src="../audio/musica_92.mp3?v=d79610cd"></audio>
-<p><b>Una séptima pista de la tabla</b> (0x94)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 6,1 s.</p>
-<audio controls preload="none" src="../audio/musica_94.mp3?v=fd9abadc"></audio>
-<p><b>Una octava pista de la tabla</b> (0x96)</p>
-<p>Lo pide ninguna llamada directa: está en la tabla de pistas; dura 6,1 s.</p>
-<audio controls preload="none" src="../audio/musica_96.mp3?v=ea367cff"></audio>
-<footer><p><em>Konami's Baseball</em> lo publico Konami para MSX; su numero de catalogo es RC-724 y son 16 KB. Todos los derechos sobre el juego siguen siendo de sus titulares. Este trabajo es de preservacion, estudio y documentacion, y la imagen del cartucho no se distribuye.</p></footer></div>
+<div class="w"><nav class="top"><a href="index.html"{% if page.name == "index.md" %} style=color:var(--tinta){% endif %}>Home</a><span style="opacity:.35">|</span><a href="THE-GAME.html"{% if page.name == "THE-GAME.md" %} style=color:var(--tinta){% endif %}>The game</a><a href="THE-PICTURES.html"{% if page.name == "THE-PICTURES.md" %} style=color:var(--tinta){% endif %}>What the cartridge draws</a><a href="THE-MUSIC.html"{% if page.name == "THE-MUSIC.md" %} style=color:var(--tinta){% endif %}>The music</a><span style="opacity:.35">|</span><a href="CURIOSITIES.html"{% if page.name == "CURIOSITIES.md" %} style=color:var(--tinta){% endif %}>Curiosities</a><span style="opacity:.35">|</span><a href="UNDER-THE-HOOD.html"{% if page.name == "UNDER-THE-HOOD.md" %} style=color:var(--tinta){% endif %}>Under the hood</a><a href="es/{% case page.name %}{% when "THE-GAME.md" %}EL-JUEGO.html{% when "THE-PICTURES.md" %}LAS-IMAGENES.html{% when "THE-MUSIC.md" %}LA-MUSICA.html{% when "CURIOSITIES.md" %}CURIOSIDADES.html{% when "UNDER-THE-HOOD.md" %}POR-DENTRO.html{% else %}index.html{% endcase %}" style="margin-left:auto;color:var(--oro)">Castellano</a></nav>
+{{ content }}
+<footer><p><em>Konami's Baseball</em> was published by Konami for the MSX; its catalogue number is RC-724 and it is 16 KB. All rights in the game remain with their holders. This is preservation, study and documentation work, and the cartridge image is not distributed.</p></footer></div>

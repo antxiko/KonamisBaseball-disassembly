@@ -1,9 +1,11 @@
-# Hallazgos
+# Curiosidades
+
+## Hallazgos
 
 Lo que apareció al desmontarlo. Todo está medido sobre el binario; cuando algo
 es una suposición, se dice.
 
-## 1. La dirección del guion va escrita detrás del propio CALL
+### 1. La dirección del guion va escrita detrás del propio CALL
 
 0x4582 no recibe nada en registros. Hace `ex (sp),hl` para pillar la dirección
 de retorno, lee de ahí una palabra, adelanta el retorno **dos bytes** para que
@@ -24,7 +26,7 @@ Aquí están declarados con la directiva `!skip 0x4582 2` del fichero de
 entradas, y los nueve argumentos caen dentro de bloques de guiones ya
 conocidos, que es lo que confirma la lectura.
 
-## 2. Los tres tercios de la pantalla, con un solo bucle
+### 2. Los tres tercios de la pantalla, con un solo bucle
 
 SCREEN 2 son tres tercios independientes de 2 KB, y para que los tres tengan lo
 mismo hay que escribirlo tres veces. 0x4485 copia de VRAM a VRAM byte a byte, y
@@ -37,7 +39,7 @@ ahorrados.** Se hace dos veces: colores y patrones.
 Y se queda **un byte corto**: 4.095 y no 4.096, así que el último byte del
 tercer tercio no se llega a escribir nunca.
 
-## 3. Los doce equipos de la liga japonesa, en doce letras
+### 3. Los doce equipos de la liga japonesa, en doce letras
 
 La parrilla de elección no enseña nombres: enseña iniciales. Los doce bytes de
 0x4649 son números de tile, y dibujando la fuente desde la ROM se leen:
@@ -52,7 +54,7 @@ alfabético dentro de cada liga. Y hay un tile hecho a propósito para esto: el
 **0xE8 es una "Bu" en un solo carácter**, que existe sólo para que los
 Buffaloes no se confundan con los Braves.
 
-## 4. La máquina juega escribiendo en el hueco del mando
+### 4. La máquina juega escribiendo en el hueco del mando
 
 No hay una vía aparte para el rival. 0x7d04 calcula qué haría un jugador y lo
 deja escrito en **0xE011**, que es el mismo byte donde 0x43e2 pone los bits
@@ -65,7 +67,7 @@ le importa si le está jugando una persona o el propio cartucho.
 Y hay un efecto secundario bonito: como 0x6c0e se niega a hacer sonar nada
 mientras 0xE002 esté puesto, **la partida automática del menú es muda**.
 
-## 5. La fuente no es ASCII: es el orden en que hicieron falta las letras
+### 5. La fuente no es ASCII: es el orden en que hicieron falta las letras
 
 ```
 0xD0 B   0xD1 D   0xD2 J   0xD3 O   0xD4 T   0xD5 I   0xD6 C   0xD7 K
@@ -83,7 +85,7 @@ puestas según fueron haciendo falta. Y en medio, un regalo: los tiles **0xD8 a
 Las cifras sí van seguidas, 0xF0 más el dígito, y por eso el marcador y la
 cuenta se escriben con un simple `or 0f0h`.
 
-## 6. El byte que cierra un guion es el primer byte del sprite siguiente
+### 6. El byte que cierra un guion es el primer byte del sprite siguiente
 
 Cada postura de jugador son tres guiones -uno por capa de color- y detrás van
 seis bytes de desplazamiento. En **21 de las 22 posturas**, el puntero a esos
@@ -94,7 +96,7 @@ capa.
 La única que no lo hace es la de 0x50EC, y es porque su primer desplazamiento
 vale 1 y no 0. Un byte ahorrado por postura, veintiuna veces.
 
-## 7. La pelota se hace pequeña porque hay cinco pelotas
+### 7. La pelota se hace pequeña porque hay cinco pelotas
 
 No hay escalado: hay **cinco dibujos** distintos en 0x6573, de siete filas a
 dos. 0x646b elige entre ellos restando la fila de la sombra menos la de la
@@ -104,7 +106,7 @@ si la sombra está por encima de la fila 0x40, o sea si la jugada va lejos.
 El bote no se calcula: **ocurre** cuando la fila de la pelota alcanza a la de su
 sombra.
 
-## 8. El bateador se come tres bytes de la rutina de al lado
+### 8. El bateador se come tres bytes de la rutina de al lado
 
 Las quince fichas de los jugadores de campo ocupan 21 bytes en la ROM y 32 en
 RAM. Quince por 32 llenan exactamente 0xE180..0xE35F, justo hasta donde empieza
@@ -118,7 +120,7 @@ quince.
 Que sea a propósito para ahorrar bytes o un descuido que no se nota porque esos
 huecos no se usan, **no se puede decidir mirando el binario**.
 
-## 9. Un guion que no dibuja nadie
+### 9. Un guion que no dibuja nadie
 
 99 bytes en 0x4AF0 que son un guion perfectamente válido: cargan cuatro
 patrones de sprite en la VRAM 0x1800, otros cuatro en 0x1D00 y cinco atributos,
@@ -138,7 +140,7 @@ No los dibuja nadie:
 Es un resultado **negativo** -no se ha encontrado el lector, que no es lo mismo
 que demostrar que no existe-, pero apunta a bytes que se quedaron dentro.
 
-## 10. El mismo armazón que King's Valley
+### 10. El mismo armazón que King's Valley
 
 La tabla de registros del VDP de los dos cartuchos es **idéntica salvo un
 byte**, el del color de borde. El lenguaje de guiones es el mismo, con dos
@@ -149,14 +151,14 @@ Que el cartucho **viejo** (1984) tenga el comando de más y el nuevo (1985) no,
 encaja con que King's Valley sea una simplificación. **SUPOSICIÓN**: no se ha
 comprobado con más cartuchos de la familia.
 
-## 11. Todo contador a cero vale 256
+### 11. Todo contador a cero vale 256
 
 El borrado de la pantalla son tres pasadas con B a cero. No son pasadas vacías:
 el Z80 decrementa antes de comprobar, así que un `djnz` con B a cero da **256**
 vueltas. Tres por 256 son las 768 posiciones de la tabla de nombres, escritas
 sin que la cuenta aparezca en ningún sitio.
 
-## 12. Lleva la marca oculta de Konami
+### 12. Lleva la marca oculta de Konami
 
 En 0x7FF6, cerrando el cartucho: **RC-724** y el título en katakana, **YA KI
 U**, que es 野球 (*yakyū*), béisbol.
@@ -164,3 +166,78 @@ U**, que es 野球 (*yakyū*), béisbol.
 Konami escondía su número de catálogo y el título al final de muchos de sus
 cartuchos; lo descubrió **Manuel Pazos**
 ([@ManuelPazosMSX](https://twitter.com/ManuelPazosMSX)), y hay que citarlo.
+
+## Preguntas abiertas
+
+Lo que queda por cerrar. Está aquí escrito para que se vea, no para que se
+olvide.
+
+### Las imágenes no se han comparado contra la VRAM del emulador
+
+Se han **mirado**, y encajan con lo que dice el código, pero mirarlas no es
+compararlas. La comprobación de verdad es volcar la VRAM de openMSX en el
+instante justo y compararla byte a byte con la que produce
+`tools/pantallas.py`. Está pendiente.
+
+### Nadie ha jugado un partido entero
+
+El listado está entendido de arriba abajo y las cifras están medidas, pero
+**no se ha llegado a jugar un partido completo de nueve entradas**. Hay dos
+cosas que sólo se pueden cerrar así:
+
+- Lo de la **prórroga por empate**. 0x7b7b, en la octava entrada, mira si los
+  dos marcadores están empatados y escribe un 0xE7 en la casilla; el partido
+  sigue. Que eso sea una prórroga es lo que dice el código, pero no se ha visto.
+- El **cartel de "4 BALL"**. Está en la tabla, se lee con la fuente del
+  cartucho, y 0x7afd lo saca a la cuarta bola. No se ha visto en pantalla.
+
+### El guion de 0x4AF0 sigue sin lector
+
+99 bytes que son un guion válido y que carga ocho patrones de sprite y cinco
+atributos. Se han hecho cuatro comprobaciones -el guion anterior no encadena,
+no hay ningún inmediato de 16 bits que apunte ahí, las dos tablas de punteros
+apuntan a sus propios bloques, y los nueve argumentos incrustados no son éste-
+y todas dan negativo.
+
+Un negativo no es una demostración. Si alguien encuentra quién lo dibuja, se
+corrige.
+
+### Los tres bytes de la ficha número quince
+
+Quince fichas de 21 bytes son 315 y la tabla tiene 312: los tres que faltan son
+los tres primeros de la rutina que viene detrás. Que sea **ahorro a propósito**
+o un **descuido que no se nota** porque esos huecos no se usan, no se puede
+decidir mirando el binario. Haría falta ver si esos tres huecos se leen alguna
+vez en una partida real.
+
+### Qué son de verdad 0xE032, 0xE057 y 0xE650
+
+Aparecen en el vuelo de la pelota bateada y en el motor de sonido, y se sabe
+**cuándo** cambian y **quién** los mira, pero no se ha podido poner un nombre
+que diga qué significan. En el listado están comentados por lo que hacen, no
+por lo que son.
+
+### La cola de sombras de 0xE245
+
+0x5d62 corre en cadena cinco bytes que están a 0x20 de distancia dentro del
+bloque de 0xE200. Que sea el rastro de lo que se mueve es lo que sugiere el
+corrimiento en cadena, pero **no se ha medido**.
+
+### El comando 0x01, ¿lo tienen más cartuchos de la familia?
+
+Baseball (1984) tiene un comando de guion que King's Valley (1985) no tiene, y
+encadena las direcciones al revés. La lectura fácil es que King's Valley
+simplificó el intérprete. Para saberlo de verdad habría que mirar los otros
+cartuchos de la misma familia: **Athletic Land**, **Cabbage Patch Kids**,
+**Hyper Olympic**, **Hyper Sports**, **Hyper Rally**, **Konami's Tennis**,
+**Konami's Golf** y **Sky Jaguar**, que están todos desensamblados en esta
+misma serie.
+
+Es material para la base de datos global de la serie, y está sin hacer.
+
+### Los canales de sonido, sin escuchar
+
+El motor está entendido -tres canales, prioridad por los seis bits bajos,
+guiones con prefijos de duración, octava y caída- pero **no se ha escuchado
+canal a canal en el emulador** para confirmar que el comando `0x1n` es de
+verdad el ruido y no otra cosa.

@@ -64,7 +64,7 @@ make web        # la web bilingüe de docs/
   野球, *yakyū*, béisbol.
 
 Todo el detalle en la web, en
-[Hallazgos](https://antxiko.github.io/KonamisBaseball-disassembly/es/HALLAZGOS.html).
+[Hallazgos](https://antxiko.github.io/KonamisBaseball-disassembly/es/CURIOSIDADES.html).
 
 ## Todas las imágenes están dibujadas desde la ROM
 

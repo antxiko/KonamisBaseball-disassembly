@@ -84,15 +84,20 @@ imagenes: $(ROM)
 # LA WEB
 #
 # Bilingue: el ingles en docs/ y el castellano en docs/es/. Las paginas se
-# escriben en markdown y se convierten con md2html.py; la portada la monta
 # make_web.py, que declara las cifras medidas de ESTE cartucho.
+# La web: en el repositorio solo van las paginas en markdown; GitHub Pages las
+# convierte con Jekyll (tools/jekyll.py escribe su configuracion y plantillas).
+# La portada la monta make_web.py con lo de tools/contenido_web.py. Para
+# comprobar los enlaces se construye en local con el mismo Jekyll (3.10).
+JEKYLL ?= C:/msys64/mingw64/bin/ruby C:/msys64/mingw64/bin/jekyll
 web: $(ROM)
 	python3 tools/pantallas.py $(ROM) $(ORG) docs/imagenes
-	python3 tools/md2html.py docs en
-	python3 tools/md2html.py docs/es es
+	python3 tools/jekyll.py docs
 	python3 tools/make_web.py docs/imagenes docs/index.html en
 	python3 tools/make_web.py docs/imagenes docs/es/index.html es
-	python3 tools/check_enlaces.py docs
+	rm -rf work/_site
+	$(JEKYLL) build -s docs -d work/_site
+	python3 tools/check_enlaces.py work/_site
 
 clean:
 	rm -rf $(WORK)/baseball.trace.json $(WORK)/baseball.blocks
